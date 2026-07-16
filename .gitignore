@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.dylib
+*.dmg
+*.exe
+dist/
+build/
+*.app/
+*.spec
+.DS_Store
+Thumbs.db
+filmsheet_config.json
+*.log
