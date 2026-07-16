@@ -163,22 +163,34 @@ class FilmProcessor:
             return f"错误: {str(e)}"
 
     def _render_135(self, images, status_callback, progress_callback):
-        """使用物理级 135 引擎渲染（4x 抗锯齿）"""
+        """使用物理级 135 引擎渲染（4x 抗锯齿，所有尺寸基于 thumb_w 等比缩放）"""
         cols = self.config['columns']
         rows = math.ceil(len(images) / cols)
         thumb_w = self.config['thumb_width']
         spacing = int(self.config['spacing'] * thumb_w / 400)
-        engine = self.engine
 
         # 抗锯齿缩放系数
         aa_scale = 4
 
-        # 物理尺寸（基础）
-        film_width_px = engine.mm_to_px(35.0)
-        perf_center_offset_px = engine.mm_to_px(2.01 + 2.794/2.0)
-        frame_top_offset_px = engine.mm_to_px((35.0 - 24.0) / 2.0)
-        frame_h_px = engine.mm_to_px(24.0)
-        strip_h = film_width_px
+        # ===== 所有尺寸基于 thumb_w 等比缩放（比例因子 = thumb_w / 36.0） =====
+        scale_factor = thumb_w / 36.0
+
+        # 胶片条高度 = 35mm 对应的像素
+        strip_h = int(35.0 * scale_factor)
+        # 齿孔中心偏移 = (2.01 + 2.794/2) mm 对应的像素
+        perf_center_offset_px = int((2.01 + 2.794/2.0) * scale_factor)
+        # 成像区域上边缘 = (35 - 24) / 2 mm 对应的像素
+        frame_top_offset_px = int((35.0 - 24.0) / 2.0 * scale_factor)
+        # 成像区域高度 = 24mm 对应的像素
+        frame_h_px = int(24.0 * scale_factor)
+
+        # 齿孔尺寸
+        perf_h_px = int(2.794 * scale_factor)      # 齿孔高度
+        perf_w_ks_px = int(1.981 * scale_factor)   # KS 齿孔宽度
+        perf_w_bh_px = int(1.854 * scale_factor)   # BH 齿孔宽度
+        perf_r_px = int(0.508 * scale_factor)      # 齿孔圆角半径
+        bh_cd_px = int(0.35 * scale_factor)        # BH 圆弧深度
+        pitch_px = int(4.75 * scale_factor)        # 齿孔间距（近似）
 
         # 布局计算
         content_w = (cols * thumb_w) + ((cols + 1) * spacing)
@@ -187,7 +199,7 @@ class FilmProcessor:
         total_w = content_w + (side_margin * 2) + int(100 * thumb_w / 400)
         bag_gap = int(50 * thumb_w / 400)
 
-        # ---- 信息区域（与原来相同） ----
+        # ---- 信息区域 ----
         lang = self.config.get('info_lang', 'en')
         label_idx = 0 if lang == 'zh' else 1
         info_data = {key: self.config.get(f'info_{key}', '') for key in LABEL_MAP}
@@ -241,7 +253,7 @@ class FilmProcessor:
         big_canvas = Image.new('RGB', (big_total_w, big_total_h), colors["canvas_bg"])
         big_draw = ImageDraw.Draw(big_canvas)
 
-        # 所有坐标乘以 aa_scale
+        # ---- 所有坐标乘以 aa_scale ----
         big_current_y = top_area_height * aa_scale
         big_side_margin = side_margin * aa_scale
         big_spacing = spacing * aa_scale
@@ -251,34 +263,32 @@ class FilmProcessor:
         big_frame_h_px = frame_h_px * aa_scale
         big_perf_center_offset_px = perf_center_offset_px * aa_scale
         big_frame_top_offset_px = frame_top_offset_px * aa_scale
-        big_pitch_px = engine.mm_to_px(engine.get_perf_pitch(
-            engine.determine_perf_type(
-                self.config.get('info_film', ''),
-                self.config.get('perf_mode', 'Auto')
-            )
-        )) * aa_scale
+        big_pitch_px = pitch_px * aa_scale
+
+        # 大画布上的齿孔参数
+        big_perf_h_px = perf_h_px * aa_scale
+        big_perf_w_ks_px = perf_w_ks_px * aa_scale
+        big_perf_w_bh_px = perf_w_bh_px * aa_scale
+        big_perf_r_px = perf_r_px * aa_scale
+        big_bh_cd_px = bh_cd_px * aa_scale
 
         # 边字字体大小也放大
         big_edge_font_sz = (int(14 * thumb_w / 400) if thumb_w > 200 else 14) * aa_scale
 
-        # 齿孔参数（物理引擎的 mm_to_px 也要乘以 aa_scale）
-        # 由于 mm_to_px 返回整数，我们在这里直接放大
-        big_perf_h_px = perf_center_offset_px * 2 * aa_scale  # 近似
-
-        # 大画布上的齿孔绘制函数
+        # ---- 大画布上的齿孔绘制函数 ----
         def draw_perf_big(draw, cx, cy, perf_fill, perf_type):
             """在放大画布上绘制齿孔"""
-            h = engine.mm_to_px(engine.PERF_DIM_Y_MM) * aa_scale
+            h = big_perf_h_px
             if perf_type == "KS":
-                w = engine.mm_to_px(engine.PERF_DIM_X_KS_MM) * aa_scale
-                r = engine.mm_to_px(engine.PERF_RADIUS_MM) * aa_scale
+                w = big_perf_w_ks_px
+                r = big_perf_r_px
                 draw.rounded_rectangle(
                     [cx - w//2, cy - h//2, cx + w//2, cy + h//2],
                     radius=r, fill=perf_fill, outline=None
                 )
             else:
-                w = engine.mm_to_px(engine.PERF_DIM_X_BH_MM) * aa_scale
-                cd = engine.mm_to_px(engine.BH_CURVE_DEPTH_MM) * aa_scale
+                w = big_perf_w_bh_px
+                cd = big_bh_cd_px
                 draw.rectangle(
                     [cx - w//2, cy - h//2 + cd, cx + w//2, cy + h//2 - cd],
                     fill=perf_fill, outline=None
@@ -319,8 +329,8 @@ class FilmProcessor:
                 total_slot_w = sum(slot_widths)
                 available_w = big_text_area_right - big_text_area_left
                 if total_slot_w > available_w and total_slot_w > 0:
-                    scale_factor = available_w / total_slot_w
-                    slot_widths = [int(sw * scale_factor) for sw in slot_widths]
+                    scale_factor2 = available_w / total_slot_w
+                    slot_widths = [int(sw * scale_factor2) for sw in slot_widths]
                 rendered_row = 0
                 for r_idx, row_keys in enumerate(INFO_LAYOUT):
                     if not any(info_data.get(k, '') for k in row_keys if k):
@@ -350,14 +360,15 @@ class FilmProcessor:
                         abs_x += slot_widths[col_idx]
                     rendered_row += 1
 
-        # ---- 绘制胶片条（在放大画布上） ----
-        film_base = colors["film_base"]
-        perf_fill = colors["perf_fill"]
-        perf_type = engine.determine_perf_type(
+        # ---- 齿孔类型 ----
+        perf_type = self.engine.determine_perf_type(
             self.config.get('info_film', ''),
             self.config.get('perf_mode', 'Auto')
         )
-        big_pitch_px = engine.mm_to_px(engine.get_perf_pitch(perf_type)) * aa_scale
+
+        # ---- 绘制胶片条（在放大画布上） ----
+        film_base = colors["film_base"]
+        perf_fill = colors["perf_fill"]
 
         big_img_idx = 0
         big_edge_text = self.config.get('edge_text', '')
@@ -367,20 +378,22 @@ class FilmProcessor:
             if self.is_cancelled:
                 return "已取消"
 
-            big_draw.rectangle([0, int(big_current_y), big_total_w, int(big_current_y + big_strip_h)], fill=film_base)
+            y1 = int(big_current_y)
+            y2 = int(big_current_y + big_strip_h)
+            big_draw.rectangle([0, y1, big_total_w, y2], fill=film_base)
 
             big_perf_y_top = big_current_y + big_perf_center_offset_px
             big_perf_y_bottom = big_current_y + big_strip_h - big_perf_center_offset_px
             big_y_img_top = big_current_y + big_frame_top_offset_px
 
-            # ---- 齿孔（在放大画布上绘制） ----
+            # ---- 齿孔 ----
             x = 25 * aa_scale
             while x < big_total_w - 25 * aa_scale:
                 draw_perf_big(big_draw, int(x), int(big_perf_y_top), perf_fill, perf_type)
                 draw_perf_big(big_draw, int(x), int(big_perf_y_bottom), perf_fill, perf_type)
                 x += big_pitch_px
 
-            # ---- 边字（在放大画布上绘制） ----
+            # ---- 边字 ----
             info_film = self.config.get('info_film', '')
             parts = info_film.split()
             brand = parts[0].upper() if parts else "KODAK"
@@ -400,7 +413,7 @@ class FilmProcessor:
             ]
             selected_x = random.sample(candidate_positions, num_occurrences)
 
-            big_text_y = big_current_y + engine.mm_to_px(0.1) * aa_scale + big_edge_font_sz // 2
+            big_text_y = big_current_y + (0.1 * scale_factor) * aa_scale + big_edge_font_sz // 2
 
             for x_pos in selected_x:
                 font = get_system_font(big_edge_font_sz)
@@ -408,14 +421,13 @@ class FilmProcessor:
                     color = colors["text_color"]
                     big_draw.text((x_pos, int(big_text_y)), edge_text, fill=color, font=font, anchor="mm")
 
-            # ---- 放置图片（在放大画布上） ----
+            # ---- 放置图片 ----
             start_col = 2 if row == 0 else 0
             for col in range(start_col, cols):
                 if big_img_idx >= len(images):
                     break
                 x_pos = big_side_margin + big_spacing + col * (big_thumb_w + big_spacing)
                 img_original = images[big_img_idx]
-                # 图片也要放大
                 big_img = img_original.resize(
                     (img_original.width * aa_scale, img_original.height * aa_scale),
                     Image.Resampling.LANCZOS
@@ -426,7 +438,7 @@ class FilmProcessor:
             big_current_y += big_strip_h + big_bag_gap
             progress_callback(50 + int((row + 1) / rows * 50), f"渲染行: {row+1}/{rows}")
 
-        # ---- 将放大画布缩回原尺寸（抗锯齿） ----
+        # ---- 缩回原尺寸 ----
         status_callback("正在应用抗锯齿...")
         canvas = big_canvas.resize((total_w, total_h), Image.Resampling.LANCZOS)
 
@@ -576,8 +588,8 @@ class FilmProcessor:
                 total_slot_w = sum(slot_widths)
                 available_w = text_area_right - text_area_left
                 if total_slot_w > available_w and total_slot_w > 0:
-                    scale_factor = available_w / total_slot_w
-                    slot_widths = [int(sw * scale_factor) for sw in slot_widths]
+                    scale_factor2 = available_w / total_slot_w
+                    slot_widths = [int(sw * scale_factor2) for sw in slot_widths]
                 rendered_row = 0
                 for r_idx, row_keys in enumerate(INFO_LAYOUT):
                     if not any(info_data.get(k, '') for k in row_keys if k):
