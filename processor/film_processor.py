@@ -225,9 +225,6 @@ class FilmProcessor:
         render_style = self.config.get('render_style', 'lightbox')
         colors = STYLE_COLORS.get(render_style, STYLE_COLORS["lightbox"])
 
-        start_frame = self.config.get('start_frame', 1)
-        show_ab = self.config.get('show_ab_marker', False)
-
         status_callback("正在绘制 135 底片...")
         canvas = Image.new('RGB', (total_w, total_h), colors["canvas_bg"])
         draw = ImageDraw.Draw(canvas)
@@ -343,8 +340,6 @@ class FilmProcessor:
         )
         pitch_px = engine.mm_to_px(engine.get_perf_pitch(perf_type))
 
-        frame_counter = start_frame
-
         for row in range(rows):
             if self.is_cancelled:
                 return "已取消"
@@ -368,17 +363,12 @@ class FilmProcessor:
             brand = parts[0].upper() if parts else "KODAK"
             film_type = parts[1] if len(parts) > 1 else "5207"
 
-            frame_num = frame_counter
-            if show_ab:
-                frame_str = f"{frame_num}A" if frame_num % 2 == 1 else f"{frame_num}B"
-            else:
-                frame_str = str(frame_num)
-
-            edge_text = f"{brand}  {frame_str}  {film_type} ◀"
+            # 固定边字：只有品牌和胶卷类型
+            edge_text = f"{brand}  {film_type} ◀"
             if base_edge_text:
                 edge_text = base_edge_text
 
-            random.seed(row * 1000 + frame_counter)
+            random.seed(row * 1000 + img_idx)
             num_occurrences = random.choice([2, 3])
             margin = int(40 * thumb_w / 400)
             candidate_positions = [
@@ -403,7 +393,6 @@ class FilmProcessor:
                 img_filled = self.cover_resize_crop(img_original, thumb_w, frame_h_px)
                 canvas.paste(img_filled, (int(x_pos), int(y_img_top)))
                 img_idx += 1
-                frame_counter += 1
 
             current_y += strip_h + bag_gap
             progress_callback(50 + int((row + 1) / rows * 50), f"渲染行: {row+1}/{rows}")

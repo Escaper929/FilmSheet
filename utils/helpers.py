@@ -45,10 +45,11 @@ STYLE_COLORS = {
         "info_text_color": (20, 20, 20),
         "info_label_color": (120, 120, 120),
         "pack_border": (200, 200, 200),
+        "display_name": "灯板正片",
     },
     "contact_sheet": {
         "canvas_bg": (0, 0, 0),
-        "film_base": (55, 55, 55),
+        "film_base": (25, 25, 25),
         "perf_fill": (0, 0, 0),
         "text_color": (235, 235, 235),
         "text_shadow": (80, 80, 80),
@@ -56,6 +57,7 @@ STYLE_COLORS = {
         "info_text_color": (255, 255, 255),
         "info_label_color": (180, 180, 180),
         "pack_border": (80, 80, 80),
+        "display_name": "接触印相",
     }
 }
 
@@ -101,7 +103,6 @@ def open_folder(path):
         pass
 
 def load_config():
-    # 配置文件放到用户目录，避免权限问题
     config_path = os.path.join(os.path.expanduser("~"), CONFIG_FILE)
     if os.path.exists(config_path):
         try:
@@ -114,8 +115,6 @@ def load_config():
         "pack_position": "left",
         "pack_border_stroke": True,
         "render_style": "lightbox",
-        "start_frame": 1,
-        "show_ab_marker": False,
     }
 
 def save_config(data):

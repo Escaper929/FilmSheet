@@ -37,8 +37,6 @@ class App:
             'processing_mode': tk.StringVar(value="positive"),
             'perf_mode': tk.StringVar(value="Auto"),
             'render_style': tk.StringVar(value=cfg.get("render_style", "lightbox")),
-            'start_frame': tk.IntVar(value=cfg.get("start_frame", 1)),
-            'show_ab_marker': tk.BooleanVar(value=cfg.get("show_ab_marker", False)),
         }
 
         for key in LABEL_MAP:
@@ -94,8 +92,6 @@ class App:
         cfg["pack_position"] = self.vars['pack_position'].get()
         cfg["pack_border_stroke"] = self.vars['pack_border_stroke'].get()
         cfg["render_style"] = self.vars['render_style'].get()
-        cfg["start_frame"] = self.vars['start_frame'].get()
-        cfg["show_ab_marker"] = self.vars['show_ab_marker'].get()
         save_config(cfg)
 
     def build_ui(self):
@@ -163,7 +159,7 @@ class App:
         ttk.Label(param_frame, text="渲染风格:").grid(row=2, column=2, sticky=tk.W, padx=(20,0))
         style_radio = ttk.Frame(param_frame)
         style_radio.grid(row=2, column=3, columnspan=2, sticky=tk.W)
-        ttk.Radiobutton(style_radio, text="灯箱正片", variable=self.vars['render_style'],
+        ttk.Radiobutton(style_radio, text="灯板正片", variable=self.vars['render_style'],
                         value="lightbox", command=self.save_pack_config).pack(side=tk.LEFT)
         ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
                         value="contact_sheet", command=self.save_pack_config).pack(side=tk.LEFT, padx=(10,0))
@@ -172,12 +168,9 @@ class App:
         edge_frame = ttk.LabelFrame(main_frame, text="边字设置", padding="5")
         edge_frame.grid(row=2, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
-        ttk.Label(edge_frame, text="起始帧号:").grid(row=0, column=0, sticky=tk.W)
-        ttk.Spinbox(edge_frame, from_=1, to=999, textvariable=self.vars['start_frame'], width=6).grid(row=0, column=1, sticky=tk.W)
-        ttk.Checkbutton(edge_frame, text="A/B标记", variable=self.vars['show_ab_marker'],
-                        command=self.save_pack_config).grid(row=0, column=2, sticky=tk.W, padx=(10,0))
-        ttk.Label(edge_frame, text="自定义内容:").grid(row=0, column=3, sticky=tk.W, padx=(20,0))
-        ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=15).grid(row=0, column=4, sticky=tk.W)
+        ttk.Label(edge_frame, text="自定义内容:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
+        ttk.Label(edge_frame, text="(留空则从'Film'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
 
         # ---- 胶卷包装图 ----
         pack_frame = ttk.LabelFrame(main_frame, text="胶卷包装图", padding="10")
