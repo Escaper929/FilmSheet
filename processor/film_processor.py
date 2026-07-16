@@ -275,6 +275,68 @@ class FilmProcessor:
         # 边字字体大小也放大
         big_edge_font_sz = (int(14 * thumb_w / 400) if thumb_w > 200 else 14) * aa_scale
 
+        # ---- 在放大画布上绘制包装图 ----
+        big_text_area_left = big_side_margin
+        big_text_area_right = big_total_w - big_side_margin
+
+        if pack_img and info_height > 0:
+            orig_w, orig_h = pack_img.size
+
+            # 直接从配置文件读取滑块值
+            from utils.helpers import load_config
+            cfg = load_config()
+            pack_size = cfg.get('pack_size', 80)
+
+            # ★★★ 顶部空白区域 = 顶部边距 + 信息区域高度 + 信息到底片间距 ★★★
+            top_blank_height = top_margin + info_height + info_to_film_gap
+            # 包装图高度 = 顶部空白区域 × 百分比
+            pack_h_display = int(top_blank_height * pack_size / 100.0)
+            if pack_h_display < 20:
+                pack_h_display = 20
+
+            # 宽度按比例
+            pack_w_display = int(pack_h_display * (orig_w / orig_h))
+
+            # 限制最大宽度为总宽度的 35%
+            max_allow_w = int(total_w * 0.35)
+            if pack_w_display > max_allow_w:
+                pack_w_display = max_allow_w
+                pack_h_display = int(pack_w_display * (orig_h / orig_w))
+
+            if pack_w_display > 0 and pack_h_display > 0:
+                # 放大包装图
+                big_pack = pack_img.resize(
+                    (pack_w_display * aa_scale, pack_h_display * aa_scale),
+                    Image.Resampling.LANCZOS
+                )
+                # 垂直居中于顶部空白区域
+                pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
+
+                if pack_position == 'left':
+                    pack_x = big_side_margin
+                    if has_pack_stroke:
+                        border_rect = [
+                            pack_x - pack_border * aa_scale,
+                            pack_y - pack_border * aa_scale,
+                            pack_x + pack_w_display * aa_scale + pack_border * aa_scale,
+                            pack_y + pack_h_display * aa_scale + pack_border * aa_scale
+                        ]
+                        big_draw.rectangle(border_rect, outline=colors["pack_border"], width=pack_border * aa_scale)
+                    big_canvas.paste(big_pack, (pack_x, pack_y))
+                    big_text_area_left = pack_x + pack_w_display * aa_scale + pack_gap * aa_scale
+                else:
+                    pack_x = big_total_w - big_side_margin - pack_w_display * aa_scale
+                    if has_pack_stroke:
+                        border_rect = [
+                            pack_x - pack_border * aa_scale,
+                            pack_y - pack_border * aa_scale,
+                            pack_x + pack_w_display * aa_scale + pack_border * aa_scale,
+                            pack_y + pack_h_display * aa_scale + pack_border * aa_scale
+                        ]
+                        big_draw.rectangle(border_rect, outline=colors["pack_border"], width=pack_border * aa_scale)
+                    big_canvas.paste(big_pack, (pack_x, pack_y))
+                    big_text_area_right = pack_x - pack_gap * aa_scale
+
         # ---- 大画布上的齿孔绘制函数 ----
         def draw_perf_big(draw, cx, cy, perf_fill, perf_type):
             """在放大画布上绘制齿孔"""
@@ -309,8 +371,6 @@ class FilmProcessor:
                 label_color = colors["info_label_color"]
                 value_color = colors["info_text_color"]
                 col_gap = int(40 * thumb_w / 400) * aa_scale
-                big_text_area_left = side_margin * aa_scale
-                big_text_area_right = (total_w - side_margin) * aa_scale
                 num_cols = max(len(row) for row in INFO_LAYOUT)
                 slot_widths = [0] * num_cols
                 for row_keys in INFO_LAYOUT:
@@ -336,7 +396,7 @@ class FilmProcessor:
                     if not any(info_data.get(k, '') for k in row_keys if k):
                         continue
                     abs_y = top_margin * aa_scale + info_top_padding * aa_scale + rendered_row * info_line_height * aa_scale
-                    abs_x = side_margin * aa_scale
+                    abs_x = big_text_area_left
                     for col_idx, key in enumerate(row_keys):
                         if key is None:
                             abs_x += slot_widths[col_idx]

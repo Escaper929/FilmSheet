@@ -37,6 +37,7 @@ class App:
             'processing_mode': tk.StringVar(value="positive"),
             'perf_mode': tk.StringVar(value="Auto"),
             'render_style': tk.StringVar(value=cfg.get("render_style", "lightbox")),
+            'pack_size': tk.IntVar(value=cfg.get("pack_size", 80)),
         }
 
         for key in LABEL_MAP:
@@ -92,6 +93,7 @@ class App:
         cfg["pack_position"] = self.vars['pack_position'].get()
         cfg["pack_border_stroke"] = self.vars['pack_border_stroke'].get()
         cfg["render_style"] = self.vars['render_style'].get()
+        cfg["pack_size"] = self.vars['pack_size'].get()
         save_config(cfg)
 
     def build_ui(self):
@@ -170,7 +172,7 @@ class App:
 
         ttk.Label(edge_frame, text="自定义内容:").grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
-        ttk.Label(edge_frame, text="(留空则从'Film'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
+        ttk.Label(edge_frame, text="(留空则从'胶卷'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
 
         # ---- 胶卷包装图 ----
         pack_frame = ttk.LabelFrame(main_frame, text="胶卷包装图", padding="10")
@@ -191,6 +193,14 @@ class App:
         pos_combo.bind("<<ComboboxSelected>>", self.save_pack_config)
         ttk.Checkbutton(pack_frame, text="描边", variable=self.vars['pack_border_stroke'],
                         command=self.save_pack_config).grid(row=1, column=2, sticky=tk.W, padx=(10,0))
+
+        # 包装图大小滑块
+        ttk.Label(pack_frame, text="大小:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        pack_size_scale = ttk.Scale(pack_frame, from_=10, to=100, variable=self.vars['pack_size'],
+                                    orient=tk.HORIZONTAL, length=120, command=self.save_pack_config)
+        pack_size_scale.grid(row=2, column=1, sticky=tk.W, padx=5)
+        ttk.Label(pack_frame, textvariable=self.vars['pack_size'], width=4).grid(row=2, column=2, sticky=tk.W)
+        ttk.Label(pack_frame, text="%", foreground="gray").grid(row=2, column=3, sticky=tk.W)
 
         self.refresh_pack_combo()
 

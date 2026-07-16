@@ -115,6 +115,7 @@ def load_config():
         "pack_position": "left",
         "pack_border_stroke": True,
         "render_style": "lightbox",
+        "pack_size": 80,
     }
 
 def save_config(data):
