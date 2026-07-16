@@ -1,0 +1,122 @@
+name: Build FilmSheet
+
+on:
+  push:
+    tags:
+      - 'v*'           # 推送 v1.0, v1.0.1 等标签时触发
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  # ========== macOS 打包 ==========
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install pillow py2app
+
+      - name: 创建 setup.py
+        run: |
+          cat > setup.py << 'EOF'
+          from setuptools import setup
+          APP = ['main.py']
+          DATA_FILES = []
+          OPTIONS = {
+              'argv_emulation': True,
+              'packages': ['PIL', 'tkinter'],
+              'includes': ['tkinter', 'PIL'],
+              'plist': {
+                  'CFBundleName': 'FilmSheet',
+                  'CFBundleDisplayName': 'FilmSheet',
+                  'CFBundleIdentifier': 'com.filmsheet.app',
+                  'CFBundleVersion': '1.0.0',
+                  'CFBundleShortVersionString': '1.0.0',
+                  'NSHighResolutionCapable': True,
+              }
+          }
+          setup(
+              app=APP,
+              data_files=DATA_FILES,
+              options={'py2app': OPTIONS},
+              setup_requires=['py2app'],
+          )
+          EOF
+
+      - name: 打包 macOS 应用
+        run: |
+          rm -rf build dist
+          python setup.py py2app
+
+      - name: 压缩 .app
+        run: |
+          cd dist
+          zip -r ../FilmSheet-macOS.zip FilmSheet.app
+
+      - name: 上传 macOS 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmSheet-macOS
+          path: FilmSheet-macOS.zip
+
+  # ========== Windows 打包 ==========
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install pillow pyinstaller
+
+      - name: 打包 Windows 可执行文件
+        run: |
+          pyinstaller --onefile --windowed --name FilmSheet main.py
+
+      - name: 压缩 .exe
+        run: |
+          Compress-Archive -Path dist/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
+
+      - name: 上传 Windows 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmSheet-Windows
+          path: FilmSheet-Windows.zip
+
+  # ========== 发布到 GitHub Releases ==========
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: 下载所有产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/FilmSheet-macOS/FilmSheet-macOS.zip
+            artifacts/FilmSheet-Windows/FilmSheet-Windows.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
