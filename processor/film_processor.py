@@ -272,8 +272,9 @@ class FilmProcessor:
         big_perf_r_px = perf_r_px * aa_scale
         big_bh_cd_px = bh_cd_px * aa_scale
 
-        # 边字字体大小也放大
-        big_edge_font_sz = (int(14 * thumb_w / 400) if thumb_w > 200 else 14) * aa_scale
+        # ---- 边字字体大小：基础值缩放到85%，再放大 ----
+        base_font = int(14 * thumb_w / 400) if thumb_w > 200 else 14
+        big_edge_font_sz = int(base_font * 0.85) * aa_scale
 
         # ---- 在放大画布上绘制包装图 ----
         big_text_area_left = big_side_margin
@@ -287,29 +288,23 @@ class FilmProcessor:
             cfg = load_config()
             pack_size = cfg.get('pack_size', 80)
 
-            # ★★★ 顶部空白区域 = 顶部边距 + 信息区域高度 + 信息到底片间距 ★★★
             top_blank_height = top_margin + info_height + info_to_film_gap
-            # 包装图高度 = 顶部空白区域 × 百分比
             pack_h_display = int(top_blank_height * pack_size / 100.0)
             if pack_h_display < 20:
                 pack_h_display = 20
 
-            # 宽度按比例
             pack_w_display = int(pack_h_display * (orig_w / orig_h))
 
-            # 限制最大宽度为总宽度的 35%
             max_allow_w = int(total_w * 0.35)
             if pack_w_display > max_allow_w:
                 pack_w_display = max_allow_w
                 pack_h_display = int(pack_w_display * (orig_h / orig_w))
 
             if pack_w_display > 0 and pack_h_display > 0:
-                # 放大包装图
                 big_pack = pack_img.resize(
                     (pack_w_display * aa_scale, pack_h_display * aa_scale),
                     Image.Resampling.LANCZOS
                 )
-                # 垂直居中于顶部空白区域
                 pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
 
                 if pack_position == 'left':
@@ -431,8 +426,13 @@ class FilmProcessor:
         perf_fill = colors["perf_fill"]
 
         big_img_idx = 0
-        big_edge_text = self.config.get('edge_text', '')
-        base_edge_text = big_edge_text
+        custom_edge_text = self.config.get('edge_text', '')
+
+        # 自动生成边字内容（从“胶卷”字段）
+        info_film = self.config.get('info_film', '')
+        parts = info_film.split()
+        brand = parts[0].upper() if parts else "KODAK"
+        film_type = parts[1] if len(parts) > 1 else "5207"
 
         for row in range(rows):
             if self.is_cancelled:
@@ -453,33 +453,44 @@ class FilmProcessor:
                 draw_perf_big(big_draw, int(x), int(big_perf_y_bottom), perf_fill, perf_type)
                 x += big_pitch_px
 
-            # ---- 边字 ----
-            info_film = self.config.get('info_film', '')
-            parts = info_film.split()
-            brand = parts[0].upper() if parts else "KODAK"
-            film_type = parts[1] if len(parts) > 1 else "5207"
+            # ---- 边字（135模式：距离片基边缘 10 * base_scale，字体缩放到85%） ----
+            if custom_edge_text:
+                edge_text = custom_edge_text
+            else:
+                edge_text = f"{brand}  {film_type} ◀"
 
-            edge_text = f"{brand}  {film_type} ◀"
-            if base_edge_text:
-                edge_text = base_edge_text
-
+            # 确定本行边字出现次数（2-4）
             random.seed(row * 1000 + big_img_idx)
-            num_occurrences = random.choice([2, 3])
+            num_occurrences = random.choice([2, 3, 4])
+
             margin = int(40 * thumb_w / 400) * aa_scale
-            candidate_positions = [
-                margin + int(0.2 * (big_total_w - 2*margin)),
-                margin + int(0.5 * (big_total_w - 2*margin)),
-                margin + int(0.8 * (big_total_w - 2*margin))
-            ]
-            selected_x = random.sample(candidate_positions, num_occurrences)
+            if num_occurrences == 2:
+                base_ratios = [0.25, 0.75]
+            elif num_occurrences == 3:
+                base_ratios = [0.18, 0.50, 0.82]
+            else:
+                base_ratios = [0.12, 0.38, 0.62, 0.88]
 
-            big_text_y = big_current_y + (0.1 * scale_factor) * aa_scale + big_edge_font_sz // 2
+            offset_range = int(0.08 * big_total_w)
+            selected_x = []
+            for ratio in base_ratios:
+                base_x = margin + int(ratio * (big_total_w - 2*margin))
+                offset = random.randint(-offset_range, offset_range)
+                x = max(margin, min(big_total_w - margin, base_x + offset))
+                selected_x.append(x)
+            selected_x.sort()
 
-            for x_pos in selected_x:
-                font = get_system_font(big_edge_font_sz)
-                if font:
-                    color = colors["text_color"]
-                    big_draw.text((x_pos, int(big_text_y)), edge_text, fill=color, font=font, anchor="mm")
+            # 135 边字Y坐标：距离片基边缘 10 * base_scale
+            edge_y_offset = int(10 * thumb_w / 400) * aa_scale
+            edge_y_top = big_current_y + edge_y_offset
+            edge_y_bottom = big_current_y + big_strip_h - edge_y_offset
+
+            font = get_system_font(big_edge_font_sz)
+            if font:
+                color = colors["text_color"]
+                for x_pos in selected_x:
+                    big_draw.text((x_pos, edge_y_top), edge_text, fill=color, font=font, anchor="mm")
+                    big_draw.text((x_pos, edge_y_bottom), edge_text, fill=color, font=font, anchor="mm")
 
             # ---- 放置图片 ----
             start_col = 2 if row == 0 else 0
@@ -514,12 +525,13 @@ class FilmProcessor:
         return "success"
 
     def _render_120(self, images, status_callback, progress_callback):
+        # 确保 target_ratio 已定义
+        sub_format = self.config.get('sub_format', '66')
+        target_ratio = FILM_FORMAT_RATIOS.get(sub_format, 1.0)
+
         cols = self.config['columns']
         rows = math.ceil(len(images) / cols)
         thumb_w = self.config['thumb_width']
-        sub_format = self.config['sub_format']
-        target_ratio = FILM_FORMAT_RATIOS.get(sub_format, 1.0)
-        fixed_h = int(thumb_w / target_ratio)
         spacing = int(self.config['spacing'] * thumb_w / 400)
         base_scale = thumb_w / 400.0
 
@@ -528,10 +540,12 @@ class FilmProcessor:
         top_margin = int(25 * base_scale)
         total_w = content_w + (side_margin * 2) + int(100 * base_scale)
 
+        fixed_h = int(thumb_w / target_ratio)
         row_h = fixed_h + (spacing * 2)
         strip_h = int(25 * base_scale) + row_h + int(25 * base_scale)
         bag_gap = int(50 * base_scale)
 
+        # 信息区域
         lang = self.config.get('info_lang', 'en')
         label_idx = 0 if lang == 'zh' else 1
         info_data = {key: self.config.get(f'info_{key}', '') for key in LABEL_MAP}
@@ -546,6 +560,7 @@ class FilmProcessor:
         if has_info and active_rows > 0:
             info_height = info_top_padding + active_rows * info_line_height + info_bottom_padding
 
+        # 包装图
         pack_img_path = self.config.get('pack_image', '')
         pack_position = self.config.get('pack_position', 'left')
         pack_img = None
@@ -581,12 +596,21 @@ class FilmProcessor:
 
         current_y = top_area_height
         img_idx = 0
-        edge_font_sz = int(14 * base_scale)
-        edge_txt = self.config.get('edge_text', '')
+
+        # ---- 120 边字字体大小缩放到85% ----
+        edge_font_sz = int(14 * base_scale * 0.85)
+        custom_edge_text = self.config.get('edge_text', '')
+
+        # 自动生成边字内容（从“胶卷”字段）
+        info_film = self.config.get('info_film', '')
+        parts = info_film.split()
+        brand = parts[0].upper() if parts else "KODAK"
+        film_type = parts[1] if len(parts) > 1 else "120"
 
         text_area_left = side_margin
         text_area_right = total_w - side_margin
 
+        # 包装图
         if pack_img and info_height > 0 and max_pack_height > 0:
             orig_w, orig_h = pack_img.size
             pack_h_display = max_pack_height
@@ -624,6 +648,7 @@ class FilmProcessor:
                     canvas.paste(resized_pack, (pack_x, pack_y))
                     text_area_right = pack_x - pack_gap
 
+        # 拍摄信息
         if has_info:
             font_main = get_system_font(info_font_size)
             if font_main:
@@ -648,8 +673,8 @@ class FilmProcessor:
                 total_slot_w = sum(slot_widths)
                 available_w = text_area_right - text_area_left
                 if total_slot_w > available_w and total_slot_w > 0:
-                    scale_factor2 = available_w / total_slot_w
-                    slot_widths = [int(sw * scale_factor2) for sw in slot_widths]
+                    scale_factor = available_w / total_slot_w
+                    slot_widths = [int(sw * scale_factor) for sw in slot_widths]
                 rendered_row = 0
                 for r_idx, row_keys in enumerate(INFO_LAYOUT):
                     if not any(info_data.get(k, '') for k in row_keys if k):
@@ -679,26 +704,62 @@ class FilmProcessor:
                         abs_x += slot_widths[col_idx]
                     rendered_row += 1
 
+        # ---- 绘制胶片条 ----
         film_base = colors["film_base"]
+
         for row in range(rows):
             if self.is_cancelled:
                 return "已取消"
+
             draw.rectangle([0, int(current_y), total_w, int(current_y + strip_h)], fill=film_base)
             y_img_top = current_y + int(25 * base_scale) + spacing
-            if edge_txt:
-                font = get_system_font(edge_font_sz)
-                if font:
-                    color = colors["text_color"]
-                    draw.text((30, current_y + int(5 * base_scale)), edge_txt, fill=color, font=font)
-                    bbox = draw.textbbox((0, 0), edge_txt, font=font)
-                    tw = bbox[2] - bbox[0]
-                    draw.text((total_w - tw - 30, current_y + int(5 * base_scale)), edge_txt, fill=color, font=font)
+
+            # ---- 边字（120模式：距离片基边缘 5 * base_scale，靠近边缘，字体85%） ----
+            if custom_edge_text:
+                edge_text = custom_edge_text
+            else:
+                edge_text = f"{brand}  {film_type} ◀"
+
+            random.seed(row * 1000 + img_idx)
+            num_occurrences = random.choice([2, 3, 4])
+
+            margin = int(40 * base_scale)
+            if num_occurrences == 2:
+                base_ratios = [0.25, 0.75]
+            elif num_occurrences == 3:
+                base_ratios = [0.18, 0.50, 0.82]
+            else:
+                base_ratios = [0.12, 0.38, 0.62, 0.88]
+
+            offset_range = int(0.08 * total_w)
+            selected_x = []
+            for ratio in base_ratios:
+                base_x = margin + int(ratio * (total_w - 2*margin))
+                offset = random.randint(-offset_range, offset_range)
+                x = max(margin, min(total_w - margin, base_x + offset))
+                selected_x.append(x)
+            selected_x.sort()
+
+            # 120 边字Y坐标：距离片基边缘 5 * base_scale（靠近边缘）
+            edge_y_offset = int(9 * base_scale)
+            edge_y_top = current_y + edge_y_offset
+            edge_y_bottom = current_y + strip_h - edge_y_offset
+
+            font = get_system_font(edge_font_sz)
+            if font:
+                color = colors["text_color"]
+                for x_pos in selected_x:
+                    draw.text((x_pos, edge_y_top), edge_text, fill=color, font=font, anchor="mm")
+                    draw.text((x_pos, edge_y_bottom), edge_text, fill=color, font=font, anchor="mm")
+
+            # ---- 放置图片 ----
             for col in range(cols):
                 if img_idx >= len(images):
                     break
                 x_pos = side_margin + spacing + col * (thumb_w + spacing)
                 canvas.paste(images[img_idx], (int(x_pos), int(y_img_top)))
                 img_idx += 1
+
             current_y += strip_h + bag_gap
             progress_callback(50 + int((row + 1) / rows * 50), f"行: {row+1}/{rows}")
 
