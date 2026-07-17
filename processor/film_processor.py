@@ -4,6 +4,12 @@ import os
 import math
 import random
 import time
+<<<<<<< HEAD
+=======
+import json
+import threading
+import subprocess
+>>>>>>> 561f6a7a73780e7209bd8367c90741d69e82e8e2
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -123,8 +129,12 @@ class FilmProcessor:
         info_film = self.config.get('info_film', '')
         parts = info_film.split()
         brand = parts[0].upper() if parts else "KODAK"
+<<<<<<< HEAD
         # Join remaining parts so "KODAK Portra 400" stays intact
         film_type = ' '.join(parts[1:]) if len(parts) > 1 else "5207"
+=======
+        film_type = parts[1] if len(parts) > 1 else "5207"
+>>>>>>> 561f6a7a73780e7209bd8367c90741d69e82e8e2
         return f"{brand}  {film_type} ◀"
 
     # ------------------------------------------------------------------
@@ -640,6 +650,7 @@ class FilmProcessor:
         open_folder(out_path)
         return "success"
 
+<<<<<<< HEAD
     def render_preview(self):
         """快速预览渲染，不保存文件，返回 PIL Image 对象。"""
         try:
@@ -837,6 +848,9 @@ class FilmProcessor:
 
     def _render_preview_120(self, images):
         """轻量级 120 预览渲染，无 AA，无保存，无文件夹打开。"""
+=======
+    def _render_120(self, images, status_callback, progress_callback):
+>>>>>>> 561f6a7a73780e7209bd8367c90741d69e82e8e2
         sub_format = self.config.get('sub_format', '66')
         target_ratio = FILM_FORMAT_RATIOS.get(sub_format, 1.0)
 
@@ -856,6 +870,7 @@ class FilmProcessor:
         strip_h = int(25 * base_scale) + row_h + int(25 * base_scale)
         bag_gap = int(50 * base_scale)
 
+<<<<<<< HEAD
         pack_img_path = self.config.get('pack_image', '')
         pack_position = self.config.get('pack_position', 'left')
         pack_img = None
@@ -968,6 +983,8 @@ class FilmProcessor:
         strip_h = int(25 * base_scale) + row_h + int(25 * base_scale)
         bag_gap = int(50 * base_scale)
 
+=======
+>>>>>>> 561f6a7a73780e7209bd8367c90741d69e82e8e2
         # ---- 包装图 ----
         pack_img_path = self.config.get('pack_image', '')
         pack_position = self.config.get('pack_position', 'left')
@@ -1129,6 +1146,7 @@ class FilmProcessor:
                     big_draw.text((x_pos, edge_y_bottom), edge_text, fill=color, font=font, anchor="mm")
 
             # ---- 放置图片 ----
+            big_y_img_top = big_current_y + int(25 * base_scale * aa_scale) + spacing * aa_scale
             for col in range(cols):
                 if img_idx >= len(images):
                     break
