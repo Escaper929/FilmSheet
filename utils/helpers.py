@@ -70,7 +70,22 @@ STYLE_COLORS = {
         "info_label_color": (180, 180, 180),
         "pack_border": (80, 80, 80),
         "display_name": "接触印相",
-    }
+    },
+    "cyanotype": {
+        "canvas_bg": (220, 230, 245),
+        "film_base": (40, 60, 100),
+        "perf_fill": (40, 60, 100),
+        "text_color": (240, 245, 255),
+        "border_color": (0, 0, 0, 60),
+        "info_text_color": (20, 35, 70),
+        "info_label_color": (70, 95, 140),
+        "pack_border": (160, 185, 220),
+        "display_name": "蓝晒模拟",
+    },
+    "cyanotype_highlight_blue": (30, 70, 160),
+    "cyanotype_midtone_blue": (80, 120, 190),
+    "cyanotype_shadow_blue": (140, 175, 220),
+    "cyanotype_paper_white": (230, 238, 250),
 }
 
 def get_system_font(size):

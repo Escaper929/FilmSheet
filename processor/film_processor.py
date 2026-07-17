@@ -156,6 +156,50 @@ class FilmProcessor:
             top = (h - new_h) // 2
             return img.crop((0, top, w, top + new_h))
 
+    def _apply_cyanotype(self, img):
+        """Convert image to cyanotype effect.
+
+        Real cyanotype: light areas become deep Prussian blue,
+        shadow areas become paper-white/light blue.
+        Uses luminance mapping to simulate UV exposure.
+        """
+        # Build cyanotype color LUT for each luminance value
+        cyan_lut = []
+        for lum in range(256):
+            if lum > 200:
+                r, g, b = 25, 55, 145
+            elif lum > 150:
+                t = (lum - 150) / 50.0
+                r = int(25 + t * 45)
+                g = int(55 + t * 55)
+                b = int(145 + t * 20)
+            elif lum > 80:
+                t = (lum - 80) / 70.0
+                r = int(70 + t * 55)
+                g = int(100 + t * 40)
+                b = int(170 + t * 20)
+            elif lum > 30:
+                t = (lum - 30) / 50.0
+                r = int(150 + t * 50)
+                g = int(175 + t * 45)
+                b = int(210 + t * 25)
+            else:
+                r = int(220 + (lum / 30) * 15)
+                g = int(228 + (lum / 30) * 10)
+                b = int(240 + (lum / 30) * 10)
+            cyan_lut.append((r, g, b))
+
+        # Convert to grayscale, then remap each pixel via LUT
+        gray = img.convert('L')
+        w, h = gray.size
+        result = Image.new('RGB', (w, h))
+        px = gray.load()
+        rx = result.load()
+        for y in range(h):
+            for x in range(w):
+                rx[x, y] = cyan_lut[px[x, y]]
+        return result
+
     def cover_resize_crop(self, img, target_w, target_h):
         img_w, img_h = img.size
         if img_w == 0 or img_h == 0:
@@ -177,6 +221,9 @@ class FilmProcessor:
                 img = img.convert('RGB')
             if self.config.get('processing_mode') == 'negative':
                 img = ImageOps.invert(img)
+            # Cyanotype: invert positive scan to simulate negative exposure
+            if self.config.get('render_style') == 'cyanotype':
+                img = self._apply_cyanotype(img)
             w, h = img.size
             if self.config.get('force_landscape', True) and h > w:
                 img = img.rotate(-90, expand=True)
@@ -194,6 +241,9 @@ class FilmProcessor:
                 img = img.convert('RGB')
             if self.config.get('processing_mode') == 'negative':
                 img = ImageOps.invert(img)
+            # Cyanotype: invert positive scan to simulate negative exposure
+            if self.config.get('render_style') == 'cyanotype':
+                img = self._apply_cyanotype(img)
             w, h = img.size
             if self.config['force_landscape'] and h > w:
                 img = img.rotate(-90, expand=True)
