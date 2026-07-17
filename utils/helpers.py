@@ -3,16 +3,28 @@
 import os
 import sys
 import json
+import platform
 import subprocess
 from PIL import ImageFont
 
 APP_NAME = "FilmSheet"
+
+def _config_dir():
+    """Return platform-specific config directory for FilmSheet."""
+    system = platform.system()
+    if system == "Darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    elif system == "Windows":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    return os.path.join(base, APP_NAME)
 CONFIG_FILE = "filmsheet_config.json"
 MAX_HISTORY_IMAGES = 30
 
 FILM_FORMAT_RATIOS = {
     "135": 1.5, "645": 1.25, "66": 1.0, "67": 1.167,
-    "68": 1.333, "69": 1.5, "617": 2.833,
+    "68": 1.333, "69": 1.5, "612": 2.0, "617": 2.833,
 }
 SUPPORTED_FORMATS = ('.jpg', '.jpeg', '.png', '.tiff', '.bmp')
 
@@ -99,11 +111,12 @@ def open_folder(path):
             subprocess.Popen(['open', folder])
         else:
             subprocess.Popen(['xdg-open', folder])
-    except Exception:
+    except OSError:
+        # subprocess.Popen raises OSError if the command is not found
         pass
 
 def load_config():
-    config_path = os.path.join(os.path.expanduser("~"), CONFIG_FILE)
+    config_path = os.path.join(_config_dir(), CONFIG_FILE)
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -119,7 +132,9 @@ def load_config():
     }
 
 def save_config(data):
-    config_path = os.path.join(os.path.expanduser("~"), CONFIG_FILE)
+    config_dir = _config_dir()
+    os.makedirs(config_dir, exist_ok=True)
+    config_path = os.path.join(config_dir, CONFIG_FILE)
     try:
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
