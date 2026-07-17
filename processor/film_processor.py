@@ -7,6 +7,7 @@ import random
 import json
 import threading
 import subprocess
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
@@ -106,6 +107,29 @@ class FilmProcessor:
             return None
 
     def run(self, status_callback, progress_callback):
+        # ---- 自动生成输出文件名（仅当用户未自定义时） ----
+        output_file = self.config.get('output_file', 'filmsheet_output.jpg')
+        # 如果用户未修改默认输出文件名，则尝试根据拍摄信息自动生成
+        default_names = ['filmsheet_output.jpg', 'filmsheet_output.png', 'filmsheet_output.jpeg']
+        if output_file in default_names:
+            roll = self.config.get('info_roll', '').strip()
+            camera = self.config.get('info_camera', '').strip()
+            film = self.config.get('info_film', '').strip()
+            shoot_date = self.config.get('info_shoot_date', '').strip()
+            parts = [p for p in [roll, camera, film, shoot_date] if p]
+            if parts:
+                name = '_'.join(parts)
+                name = re.sub(r'[\\/*?:"<>|]', '_', name)
+                old_path = self.config['output_path']
+                dirname = os.path.dirname(old_path)
+                if not dirname:
+                    dirname = os.getcwd()
+                ext = os.path.splitext(old_path)[1]
+                if not ext:
+                    ext = '.jpg'
+                new_path = os.path.join(dirname, name + ext)
+                self.config['output_path'] = new_path
+        # ---- 继续原有流程 ----
         try:
             files = sorted([
                 os.path.join(self.config['input_folder'], f)
@@ -741,7 +765,7 @@ class FilmProcessor:
             selected_x.sort()
 
             # 120 边字Y坐标：距离片基边缘 5 * base_scale（靠近边缘）
-            edge_y_offset = int(9 * base_scale)
+            edge_y_offset = int(5 * base_scale)
             edge_y_top = current_y + edge_y_offset
             edge_y_bottom = current_y + strip_h - edge_y_offset
 
