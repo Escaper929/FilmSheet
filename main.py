@@ -3,10 +3,11 @@
 
 import sys
 import tkinter as tk
+from ttkthemes import ThemedTk
 from ui.app import App
 
 def main():
-    root = tk.Tk()
+    root = ThemedTk(theme="arc")
     app = App(root)
     root.mainloop()
 

@@ -97,6 +97,13 @@ class App:
         save_config(cfg)
 
     def build_ui(self):
+        # 设置主题样式微调
+        style = ttk.Style()
+        style.configure('TLabelframe.Label', font=('Segoe UI', 10, 'bold'))
+        style.configure('TLabel', font=('Segoe UI', 9))
+        style.configure('TButton', font=('Segoe UI', 9))
+        style.configure('TEntry', font=('Segoe UI', 9))
+        # 后面的原有代码不变...
         main_container = ttk.Frame(self.root)
         main_container.pack(fill=tk.BOTH, expand=True)
 
