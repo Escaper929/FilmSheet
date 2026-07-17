@@ -5,6 +5,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from PIL import Image
 
 from processor.film_processor import FilmProcessor
 from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
@@ -20,7 +21,7 @@ class App:
 
         # 确保子画幅有默认值
         sub_format = cfg.get("sub_format", "标准 36×24")
-        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "617"]:
+        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "612", "617"]:
             sub_format = "标准 36×24"
 
         self.vars = {
@@ -289,6 +290,8 @@ class App:
 
         btn_frame = ttk.Frame(ctrl_frame)
         btn_frame.pack(side=tk.BOTTOM)
+        self.preview_btn = ttk.Button(btn_frame, text="预览", command=self.preview_process)
+        self.preview_btn.pack(side=tk.LEFT, padx=5)
         self.start_btn = ttk.Button(btn_frame, text="开始生成", command=self.start_process)
         self.start_btn.pack(side=tk.LEFT, padx=5)
         self.cancel_btn = ttk.Button(btn_frame, text="取消", command=self.cancel_process, state=tk.DISABLED)
@@ -384,6 +387,77 @@ class App:
         folder = filedialog.askdirectory()
         if folder:
             self.vars['input_folder'].set(folder)
+
+    def preview_process(self):
+        """在临时窗口中快速预览渲染效果。"""
+        input_dir = self.vars['input_folder'].get()
+        if not input_dir or not os.path.isdir(input_dir):
+            messagebox.showwarning("提示", "请先选择图片来源文件夹！")
+            return
+
+        self.status_lbl.config(text="正在预览...", foreground="gray")
+        self.root.update()
+
+        config = {k: v.get() if hasattr(v, 'get') else v for k, v in self.vars.items()}
+        config['output_path'] = os.path.join(input_dir, 'preview_temp.jpg')
+
+        proc = FilmProcessor(config)
+        img, error = proc.render_preview()
+
+        if error:
+            self.status_lbl.config(text="预览失败", foreground="red")
+            messagebox.showerror("预览失败", error)
+            return
+
+        if img is None:
+            self.status_lbl.config(text="预览失败", foreground="red")
+            messagebox.showwarning("提示", "没有可处理的图片")
+            return
+
+        # 将预览图缩放到窗口可视范围内
+        max_w, max_h = 900, 700
+        orig_w, orig_h = img.size
+        scale = min(max_w / orig_w, max_h / orig_h, 1.0)
+        if scale < 1.0:
+            disp_w = int(orig_w * scale)
+            disp_h = int(orig_h * scale)
+            img = img.resize((disp_w, disp_h), Image.Resampling.LANCZOS)
+
+        # 在临时窗口中显示
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title("FilmSheet Preview")
+        preview_win.geometry(f"{img.width + 40}x{img.height + 80}")
+
+        # Canvas + scrollbar
+        canvas_frame = ttk.Frame(preview_win)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        canvas = tk.Canvas(canvas_frame, bg='#333')
+        scroll_y = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=canvas.yview)
+        scroll_x = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=canvas.xview)
+        canvas.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Convert PIL Image to tkinter-compatible PhotoImage
+        from PIL.ImageTk import PhotoImage as TkPhotoImage
+        tk_photo = TkPhotoImage(img)
+
+        canvas.create_image(0, 0, image=tk_photo, anchor=tk.NW, tags="preview")
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+        # 底部按钮
+        btn_frame = ttk.Frame(preview_win)
+        btn_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(btn_frame, text=f"预览尺寸: {orig_w} × {orig_h} (显示: {img.width} × {img.height})", foreground="gray").pack()
+        ttk.Button(btn_frame, text="关闭", command=preview_win.destroy).pack(pady=5)
+
+        # 保持引用防止 GC
+        canvas.image_ref = tk_photo
+
+        self.status_lbl.config(text="预览完成", foreground="green")
 
     def start_process(self):
         input_dir = self.vars['input_folder'].get()
