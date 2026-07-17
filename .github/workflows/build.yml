@@ -22,7 +22,11 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow py2app
+          pip install pillow py2app ttkthemes
+
+      - name: 获取版本号
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: 创建 setup.py
         run: |
@@ -32,14 +36,14 @@ jobs:
           DATA_FILES = []
           OPTIONS = {
               'argv_emulation': True,
-              'packages': ['PIL', 'tkinter'],
-              'includes': ['tkinter', 'PIL'],
+              'packages': ['PIL', 'ttkthemes'],
+              'includes': ['PIL', 'ttkthemes', 'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
               'plist': {
                   'CFBundleName': 'FilmSheet',
                   'CFBundleDisplayName': 'FilmSheet',
                   'CFBundleIdentifier': 'com.filmsheet.app',
-                  'CFBundleVersion': '1.0.0',
-                  'CFBundleShortVersionString': '1.0.0',
+                  'CFBundleVersion': '${{ steps.version.outputs.VERSION }}',
+                  'CFBundleShortVersionString': '${{ steps.version.outputs.VERSION }}',
                   'NSHighResolutionCapable': True,
               }
           }
@@ -82,7 +86,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller
+          pip install pillow pyinstaller ttkthemes
 
       - name: 打包 Windows 可执行文件
         run: |
@@ -90,7 +94,7 @@ jobs:
 
       - name: 压缩 .exe
         run: |
-          Compress-Archive -Path dist/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
+          Compress-Archive -Path build/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4
@@ -102,7 +106,7 @@ jobs:
   release:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
       - name: 下载所有产物
         uses: actions/download-artifact@v4

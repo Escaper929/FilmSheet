@@ -4,8 +4,8 @@ APP = ['main.py']
 DATA_FILES = []
 OPTIONS = {
     'argv_emulation': True,
-    'packages': ['PIL', 'tkinter'],
-    'includes': ['tkinter', 'PIL'],
+    'packages': ['PIL', 'tkinter', 'ttkthemes'],
+    'includes': ['tkinter', 'PIL', 'ttkthemes'],
     'plist': {
         'CFBundleName': 'FilmSheet',
         'CFBundleDisplayName': 'FilmSheet',
