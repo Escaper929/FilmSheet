@@ -109,7 +109,6 @@ class FilmProcessor:
     def run(self, status_callback, progress_callback):
         # ---- 自动生成输出文件名（仅当用户未自定义时） ----
         output_file = self.config.get('output_file', 'filmsheet_output.jpg')
-        # 如果用户未修改默认输出文件名，则尝试根据拍摄信息自动生成
         default_names = ['filmsheet_output.jpg', 'filmsheet_output.png', 'filmsheet_output.jpeg']
         if output_file in default_names:
             roll = self.config.get('info_roll', '').strip()
@@ -187,7 +186,7 @@ class FilmProcessor:
             return f"错误: {str(e)}"
 
     def _render_135(self, images, status_callback, progress_callback):
-        """使用物理级 135 引擎渲染（4x 抗锯齿，所有尺寸基于 thumb_w 等比缩放）"""
+        """使用物理级 135 引擎渲染（支持多种子画幅）"""
         cols = self.config['columns']
         rows = math.ceil(len(images) / cols)
         thumb_w = self.config['thumb_width']
@@ -196,28 +195,47 @@ class FilmProcessor:
         # 抗锯齿缩放系数
         aa_scale = 4
 
-        # ===== 所有尺寸基于 thumb_w 等比缩放（比例因子 = thumb_w / 36.0） =====
-        scale_factor = thumb_w / 36.0
+        # ---- 子画幅配置 ----
+        sub_format = self.config.get('sub_format', '标准 36×24')
+        
+        # 画幅配置表 (宽, 高, 占用齿孔数)
+        sub_format_configs = {
+            "标准 36×24": (36, 24, 8),
+            "半格 18×24": (18, 24, 4),
+            "方形 24×24": (24, 24, 5),
+            "XPan 65×24": (65, 24, 14),
+        }
+        frame_w_mm, frame_h_mm, perfs_per_frame = sub_format_configs.get(
+            sub_format, (36, 24, 8)
+        )
+        
+        # 齿孔类型
+        perf_type = self.engine.determine_perf_type(
+            self.config.get('info_film', ''),
+            self.config.get('perf_mode', 'Auto')
+        )
+        pitch_mm = self.engine.get_perf_pitch(perf_type)
+        advance_mm = pitch_mm * perfs_per_frame
+        scale_factor = thumb_w / frame_w_mm
 
-        # 胶片条高度 = 35mm 对应的像素
+        # ---- 物理尺寸 ----
         strip_h = int(35.0 * scale_factor)
-        # 齿孔中心偏移 = (2.01 + 2.794/2) mm 对应的像素
         perf_center_offset_px = int((2.01 + 2.794/2.0) * scale_factor)
-        # 成像区域上边缘 = (35 - 24) / 2 mm 对应的像素
         frame_top_offset_px = int((35.0 - 24.0) / 2.0 * scale_factor)
-        # 成像区域高度 = 24mm 对应的像素
-        frame_h_px = int(24.0 * scale_factor)
+        frame_h_px = int(frame_h_mm * scale_factor)
+        frame_w_px = int(frame_w_mm * scale_factor)
 
         # 齿孔尺寸
-        perf_h_px = int(2.794 * scale_factor)      # 齿孔高度
-        perf_w_ks_px = int(1.981 * scale_factor)   # KS 齿孔宽度
-        perf_w_bh_px = int(1.854 * scale_factor)   # BH 齿孔宽度
-        perf_r_px = int(0.508 * scale_factor)      # 齿孔圆角半径
-        bh_cd_px = int(0.35 * scale_factor)        # BH 圆弧深度
-        pitch_px = int(4.75 * scale_factor)        # 齿孔间距（近似）
+        perf_h_px = int(2.794 * scale_factor)
+        perf_w_ks_px = int(1.981 * scale_factor)
+        perf_w_bh_px = int(1.854 * scale_factor)
+        perf_r_px = int(0.508 * scale_factor)
+        bh_cd_px = int(0.35 * scale_factor)
+        pitch_px = int(pitch_mm * scale_factor)
+        advance_px = int(advance_mm * scale_factor)
 
-        # 布局计算
-        content_w = (cols * thumb_w) + ((cols + 1) * spacing)
+        # ---- 布局计算 ----
+        content_w = (cols * frame_w_px) + ((cols + 1) * spacing)
         side_margin = int(50 * thumb_w / 400)
         top_margin = int(25 * thumb_w / 400)
         total_w = content_w + (side_margin * 2) + int(100 * thumb_w / 400)
@@ -281,10 +299,10 @@ class FilmProcessor:
         big_current_y = top_area_height * aa_scale
         big_side_margin = side_margin * aa_scale
         big_spacing = spacing * aa_scale
-        big_thumb_w = thumb_w * aa_scale
+        big_frame_w_px = frame_w_px * aa_scale
+        big_frame_h_px = frame_h_px * aa_scale
         big_strip_h = strip_h * aa_scale
         big_bag_gap = bag_gap * aa_scale
-        big_frame_h_px = frame_h_px * aa_scale
         big_perf_center_offset_px = perf_center_offset_px * aa_scale
         big_frame_top_offset_px = frame_top_offset_px * aa_scale
         big_pitch_px = pitch_px * aa_scale
@@ -296,7 +314,7 @@ class FilmProcessor:
         big_perf_r_px = perf_r_px * aa_scale
         big_bh_cd_px = bh_cd_px * aa_scale
 
-        # ---- 边字字体大小：基础值缩放到85%，再放大 ----
+        # ---- 边字字体大小缩放到85% ----
         base_font = int(14 * thumb_w / 400) if thumb_w > 200 else 14
         big_edge_font_sz = int(base_font * 0.85) * aa_scale
 
@@ -306,8 +324,6 @@ class FilmProcessor:
 
         if pack_img and info_height > 0:
             orig_w, orig_h = pack_img.size
-
-            # 直接从配置文件读取滑块值
             from utils.helpers import load_config
             cfg = load_config()
             pack_size = cfg.get('pack_size', 80)
@@ -318,7 +334,6 @@ class FilmProcessor:
                 pack_h_display = 20
 
             pack_w_display = int(pack_h_display * (orig_w / orig_h))
-
             max_allow_w = int(total_w * 0.35)
             if pack_w_display > max_allow_w:
                 pack_w_display = max_allow_w
@@ -358,7 +373,6 @@ class FilmProcessor:
 
         # ---- 大画布上的齿孔绘制函数 ----
         def draw_perf_big(draw, cx, cy, perf_fill, perf_type):
-            """在放大画布上绘制齿孔"""
             h = big_perf_h_px
             if perf_type == "KS":
                 w = big_perf_w_ks_px
@@ -439,11 +453,8 @@ class FilmProcessor:
                         abs_x += slot_widths[col_idx]
                     rendered_row += 1
 
-        # ---- 齿孔类型 ----
-        perf_type = self.engine.determine_perf_type(
-            self.config.get('info_film', ''),
-            self.config.get('perf_mode', 'Auto')
-        )
+        # ---- 齿孔类型（再次确认，用于绘制） ----
+        # 已经在上文定义了 perf_type，无需重复
 
         # ---- 绘制胶片条（在放大画布上） ----
         film_base = colors["film_base"]
@@ -452,7 +463,6 @@ class FilmProcessor:
         big_img_idx = 0
         custom_edge_text = self.config.get('edge_text', '')
 
-        # 自动生成边字内容（从“胶卷”字段）
         info_film = self.config.get('info_film', '')
         parts = info_film.split()
         brand = parts[0].upper() if parts else "KODAK"
@@ -477,13 +487,12 @@ class FilmProcessor:
                 draw_perf_big(big_draw, int(x), int(big_perf_y_bottom), perf_fill, perf_type)
                 x += big_pitch_px
 
-            # ---- 边字（135模式：距离片基边缘 10 * base_scale，字体缩放到85%） ----
+            # ---- 边字 ----
             if custom_edge_text:
                 edge_text = custom_edge_text
             else:
                 edge_text = f"{brand}  {film_type} ◀"
 
-            # 确定本行边字出现次数（2-4）
             random.seed(row * 1000 + big_img_idx)
             num_occurrences = random.choice([2, 3, 4])
 
@@ -504,7 +513,6 @@ class FilmProcessor:
                 selected_x.append(x)
             selected_x.sort()
 
-            # 135 边字Y坐标：距离片基边缘 10 * base_scale
             edge_y_offset = int(10 * thumb_w / 400) * aa_scale
             edge_y_top = big_current_y + edge_y_offset
             edge_y_bottom = big_current_y + big_strip_h - edge_y_offset
@@ -521,12 +529,9 @@ class FilmProcessor:
             for col in range(start_col, cols):
                 if big_img_idx >= len(images):
                     break
-                x_pos = big_side_margin + big_spacing + col * (big_thumb_w + big_spacing)
+                x_pos = big_side_margin + big_spacing + col * (big_frame_w_px + big_spacing)
                 img_original = images[big_img_idx]
-                big_img = img_original.resize(
-                    (img_original.width * aa_scale, img_original.height * aa_scale),
-                    Image.Resampling.LANCZOS
-                )
+                big_img = self.cover_resize_crop(img_original, big_frame_w_px, big_frame_h_px)
                 big_canvas.paste(big_img, (int(x_pos), int(big_y_img_top)))
                 big_img_idx += 1
 
@@ -620,7 +625,6 @@ class FilmProcessor:
 
         current_y = top_area_height
         img_idx = 0
-
         # ---- 120 边字字体大小缩放到85% ----
         edge_font_sz = int(14 * base_scale * 0.85)
         custom_edge_text = self.config.get('edge_text', '')

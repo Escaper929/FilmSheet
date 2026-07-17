@@ -7,16 +7,21 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from processor.film_processor import FilmProcessor
-from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS
+from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
 
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title("FilmSheet")
-        self.root.geometry("620x750")
+        self.root.geometry("660x750")
 
         cfg = load_config()
         self.pack_history = cfg.get("pack_images", [])
+
+        # 确保子画幅有默认值
+        sub_format = cfg.get("sub_format", "标准 36×24")
+        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "617"]:
+            sub_format = "标准 36×24"
 
         self.vars = {
             'input_folder': tk.StringVar(),
@@ -29,7 +34,7 @@ class App:
             'output_format': tk.StringVar(value="JPG"),
             'quality': tk.IntVar(value=95),
             'film_format': tk.StringVar(value="135"),
-            'sub_format': tk.StringVar(value="66"),
+            'sub_format': tk.StringVar(value=sub_format),
             'info_lang': tk.StringVar(value="en"),
             'pack_image': tk.StringVar(),
             'pack_position': tk.StringVar(value=cfg.get("pack_position", "left")),
@@ -46,6 +51,9 @@ class App:
         self.processor = None
         self.info_labels = {}
         self.build_ui()
+
+        # 初始化比例显示
+        self.update_ratio_label()
 
     def _get_label_text(self, key):
         lang = self.vars['info_lang'].get()
@@ -96,14 +104,75 @@ class App:
         cfg["pack_size"] = self.vars['pack_size'].get()
         save_config(cfg)
 
+    def toggle_sub_format(self):
+        """切换画幅时更新子画幅选项和比例显示"""
+        film_format = self.vars['film_format'].get()
+        if film_format == "135":
+            self.sub_combo['values'] = ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]
+            current = self.vars['sub_format'].get()
+            if current not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]:
+                self.vars['sub_format'].set("标准 36×24")
+        else:
+            self.sub_combo['values'] = ["645", "66", "67", "68", "69", "617"]
+            current = self.vars['sub_format'].get()
+            if current not in ["645", "66", "67", "68", "69", "617"]:
+                self.vars['sub_format'].set("66")
+        self.update_ratio_label()
+
+    def update_ratio_label(self):
+        """更新比例显示"""
+        film_format = self.vars['film_format'].get()
+        sub_format = self.vars['sub_format'].get()
+        if film_format == "135":
+            ratios = {
+                "标准 36×24": "3:2",
+                "半格 18×24": "3:4",
+                "方形 24×24": "1:1",
+                "XPan 65×24": "65:24"
+            }
+            self.ratio_label.config(text=ratios.get(sub_format, ""))
+        else:
+            # 120 比例
+            format_ratios = {
+                "645": "1.25:1",
+                "66": "1:1",
+                "67": "1.167:1",
+                "68": "1.333:1",
+                "69": "1.5:1",
+                "617": "2.833:1"
+            }
+            self.ratio_label.config(text=format_ratios.get(sub_format, ""))
+
+    def auto_adjust_columns(self):
+        """根据当前画幅自动调整每行列数"""
+        film_format = self.vars['film_format'].get()
+        sub_format = self.vars['sub_format'].get()
+        recommended = 6  # 默认
+
+        if film_format == "135":
+            if sub_format == "标准 36×24":
+                recommended = 6
+            elif sub_format == "半格 18×24":
+                recommended = 12
+            elif sub_format == "方形 24×24":
+                recommended = 8
+            elif sub_format == "XPan 65×24":
+                recommended = 3
+        else:  # 120
+            # 根据常用底片袋习惯推荐
+            if sub_format in ["645", "66"]:
+                recommended = 6
+            elif sub_format in ["67", "68"]:
+                recommended = 5
+            elif sub_format == "69":
+                recommended = 4
+            elif sub_format == "617":
+                recommended = 3
+
+        self.vars['columns'].set(recommended)
+        messagebox.showinfo("自适应", f"已根据画幅 '{sub_format}' 将每行列数设为 {recommended}")
+
     def build_ui(self):
-        # 设置主题样式微调
-        style = ttk.Style()
-        style.configure('TLabelframe.Label', font=('Segoe UI', 10, 'bold'))
-        style.configure('TLabel', font=('Segoe UI', 9))
-        style.configure('TButton', font=('Segoe UI', 9))
-        style.configure('TEntry', font=('Segoe UI', 9))
-        # 后面的原有代码不变...
         main_container = ttk.Frame(self.root)
         main_container.pack(fill=tk.BOTH, expand=True)
 
@@ -138,6 +207,7 @@ class App:
         param_frame = ttk.LabelFrame(main_frame, text="参数设置", padding="10")
         param_frame.grid(row=1, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
+        # 第一行：成像模式 + 画幅 + 子画幅 + 比例
         ttk.Label(param_frame, text="成像模式:").grid(row=0, column=0, sticky=tk.W)
         mode_radio = ttk.Frame(param_frame)
         mode_radio.grid(row=0, column=1, sticky=tk.W)
@@ -151,23 +221,34 @@ class App:
                         command=self.toggle_sub_format).pack(side=tk.LEFT)
         ttk.Radiobutton(rf, text="120", variable=self.vars['film_format'], value="120",
                         command=self.toggle_sub_format).pack(side=tk.LEFT, padx=(10,0))
-        self.sub_combo = ttk.Combobox(param_frame, textvariable=self.vars['sub_format'],
-                                      values=["645", "66", "67", "68", "69", "617"], state="disabled", width=6)
-        self.sub_combo.grid(row=0, column=4, sticky=tk.W, padx=5)
 
+        # 子画幅下拉框
+        self.sub_combo = ttk.Combobox(param_frame, textvariable=self.vars['sub_format'],
+                                      state="readonly", width=12)
+        self.sub_combo.grid(row=0, column=4, sticky=tk.W, padx=5)
+        self.sub_combo.bind("<<ComboboxSelected>>", lambda e: self.update_ratio_label())
+
+        # 比例显示
+        ttk.Label(param_frame, text="比例:").grid(row=0, column=5, sticky=tk.W, padx=(5,0))
+        self.ratio_label = ttk.Label(param_frame, text="3:2", width=6)
+        self.ratio_label.grid(row=0, column=6, sticky=tk.W)
+
+        # 第二行：缩略图宽 + 每行列数 + 自适应按钮 + 强制横向
         ttk.Label(param_frame, text="缩略图宽:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Spinbox(param_frame, from_=300, to=800, textvariable=self.vars['thumb_width'], width=6).grid(row=1, column=1, sticky=tk.W)
         ttk.Label(param_frame, text="每行列数:").grid(row=1, column=2, sticky=tk.W, padx=(20,0))
         ttk.Spinbox(param_frame, from_=3, to=10, textvariable=self.vars['columns'], width=6).grid(row=1, column=3, sticky=tk.W)
-        ttk.Checkbutton(param_frame, text="强制横向", variable=self.vars['force_landscape']).grid(row=1, column=4, sticky=tk.W, padx=(10,0))
+        ttk.Button(param_frame, text="自适应画幅", command=self.auto_adjust_columns).grid(row=1, column=4, sticky=tk.W, padx=(10,0))
+        ttk.Checkbutton(param_frame, text="强制横向", variable=self.vars['force_landscape']).grid(row=1, column=5, columnspan=2, sticky=tk.W, padx=(10,0))
 
+        # 第三行：齿孔模式 + 渲染风格
         ttk.Label(param_frame, text="齿孔模式:").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Combobox(param_frame, textvariable=self.vars['perf_mode'],
                      values=["Auto", "KS (民用)", "BH (电影)"], state="readonly", width=10).grid(row=2, column=1, sticky=tk.W)
 
         ttk.Label(param_frame, text="渲染风格:").grid(row=2, column=2, sticky=tk.W, padx=(20,0))
         style_radio = ttk.Frame(param_frame)
-        style_radio.grid(row=2, column=3, columnspan=2, sticky=tk.W)
+        style_radio.grid(row=2, column=3, columnspan=3, sticky=tk.W)
         ttk.Radiobutton(style_radio, text="灯板正片", variable=self.vars['render_style'],
                         value="lightbox", command=self.save_pack_config).pack(side=tk.LEFT)
         ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
@@ -273,7 +354,72 @@ class App:
         self.status_lbl.grid(row=7, column=0, columnspan=4, pady=5)
 
     def toggle_sub_format(self):
-        self.sub_combo.config(state="readonly" if self.vars['film_format'].get() == "120" else "disabled")
+        """切换画幅时更新子画幅选项和比例显示"""
+        film_format = self.vars['film_format'].get()
+        if film_format == "135":
+            self.sub_combo['values'] = ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]
+            current = self.vars['sub_format'].get()
+            if current not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]:
+                self.vars['sub_format'].set("标准 36×24")
+        else:
+            self.sub_combo['values'] = ["645", "66", "67", "68", "69", "617"]
+            current = self.vars['sub_format'].get()
+            if current not in ["645", "66", "67", "68", "69", "617"]:
+                self.vars['sub_format'].set("66")
+        self.update_ratio_label()
+
+    def update_ratio_label(self):
+        """更新比例显示"""
+        film_format = self.vars['film_format'].get()
+        sub_format = self.vars['sub_format'].get()
+        if film_format == "135":
+            ratios = {
+                "标准 36×24": "3:2",
+                "半格 18×24": "3:4",
+                "方形 24×24": "1:1",
+                "XPan 65×24": "65:24"
+            }
+            self.ratio_label.config(text=ratios.get(sub_format, ""))
+        else:
+            # 120 比例
+            format_ratios = {
+                "645": "1.25:1",
+                "66": "1:1",
+                "67": "1.167:1",
+                "68": "1.333:1",
+                "69": "1.5:1",
+                "617": "2.833:1"
+            }
+            self.ratio_label.config(text=format_ratios.get(sub_format, ""))
+
+    def auto_adjust_columns(self):
+        """根据当前画幅自动调整每行列数"""
+        film_format = self.vars['film_format'].get()
+        sub_format = self.vars['sub_format'].get()
+        recommended = 6  # 默认
+
+        if film_format == "135":
+            if sub_format == "标准 36×24":
+                recommended = 6
+            elif sub_format == "半格 18×24":
+                recommended = 12
+            elif sub_format == "方形 24×24":
+                recommended = 8
+            elif sub_format == "XPan 65×24":
+                recommended = 3
+        else:  # 120
+            # 根据常用底片袋习惯推荐
+            if sub_format in ["645", "66"]:
+                recommended = 6
+            elif sub_format in ["67", "68"]:
+                recommended = 5
+            elif sub_format == "69":
+                recommended = 4
+            elif sub_format == "617":
+                recommended = 3
+
+        self.vars['columns'].set(recommended)
+        messagebox.showinfo("自适应", f"已根据画幅 '{sub_format}' 将每行列数设为 {recommended}")
 
     def update_ext(self, event):
         fmt = self.vars['output_format'].get()
