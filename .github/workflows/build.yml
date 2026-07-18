@@ -94,7 +94,7 @@ jobs:
 
       - name: 压缩 .exe
         run: |
-          Compress-Archive -Path build/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
+          Compress-Archive -Path dist/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4
