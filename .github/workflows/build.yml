@@ -94,6 +94,7 @@ jobs:
 
       - name: 压缩 .exe
         run: |
+          dir dist
           Compress-Archive -Path dist/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
 
       - name: 上传 Windows 产物
@@ -112,6 +113,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
+
+      - name: 检查产物
+        run: |
+          dir artifacts
+          if (-not (Test-Path "artifacts/FilmSheet-macOS/FilmSheet-macOS.zip")) {
+            Write-Error "macOS artifact not found"
+            exit 1
+          }
+          if (-not (Test-Path "artifacts/FilmSheet-Windows/FilmSheet-Windows.zip")) {
+            Write-Error "Windows artifact not found"
+            exit 1
+          }
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v1
