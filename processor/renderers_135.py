@@ -110,7 +110,8 @@ class Renderer135(BaseRenderer):
             selected_x.append(x)
         selected_x.sort()
 
-        edge_y_offset = int(10 * thumb_w / 400) * scale
+        # Edge text 0.9mm from strip edge
+        edge_y_offset = int(0.9 * layout['scale_factor'])
         edge_y_top = y1 + edge_y_offset
         edge_y_bottom = y2 - edge_y_offset
 

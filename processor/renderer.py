@@ -41,10 +41,12 @@ class BaseRenderer:
         For production mode saves to disk and returns "success" / error string.
         """
         layout = self.compute_layout()
-        canvas = self._build_canvas(layout)
+        canvas, draw, layout = self._build_canvas(layout)
         self._draw_pack_image(canvas, layout)
         self._draw_info_block(canvas, layout)
-        self._draw_strips(canvas, layout)
+        result = self._draw_strips(canvas, layout)
+        if result == "已取消":
+            return "已取消"
         canvas = self._downscale_if_aa(canvas, layout)
 
         if self.is_preview:
