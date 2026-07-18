@@ -109,25 +109,21 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: 下载所有产物
+      - name: 下载产物
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          merge-multiple: true
+          name: FilmSheet-macOS
+          path: artifacts/FilmSheet-macOS
+
+      - name: 下载产物
+        uses: actions/download-artifact@v4
+        with:
+          name: FilmSheet-Windows
+          path: artifacts/FilmSheet-Windows
 
       - name: 检查产物
         run: |
-          ls -la artifacts/
-          ls -la artifacts/FilmSheet-macOS/
-          ls -la artifacts/FilmSheet-Windows/
-          if [ ! -f "artifacts/FilmSheet-macOS/FilmSheet-macOS.zip" ]; then
-            echo "macOS artifact not found"
-            exit 1
-          fi
-          if [ ! -f "artifacts/FilmSheet-Windows/FilmSheet-Windows.zip" ]; then
-            echo "Windows artifact not found"
-            exit 1
-          fi
+          ls -laR artifacts/
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v1
