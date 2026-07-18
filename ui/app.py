@@ -197,8 +197,6 @@ class App:
                         value="lightbox", command=self.save_pack_config).pack(side=tk.LEFT)
         ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
                         value="contact_sheet", command=self.save_pack_config).pack(side=tk.LEFT, padx=(10,0))
-        ttk.Radiobutton(style_radio, text="蓝晒模拟", variable=self.vars['render_style'],
-                        value="cyanotype", command=self.save_pack_config).pack(side=tk.LEFT, padx=(10,0))
 
         # ---- 边字设置 ----
         edge_frame = ttk.LabelFrame(main_frame, text="边字设置", padding="5")

@@ -71,21 +71,6 @@ STYLE_COLORS = {
         "pack_border": (80, 80, 80),
         "display_name": "接触印相",
     },
-    "cyanotype": {
-        "canvas_bg": (220, 230, 245),
-        "film_base": (40, 60, 100),
-        "perf_fill": (40, 60, 100),
-        "text_color": (240, 245, 255),
-        "border_color": (0, 0, 0, 60),
-        "info_text_color": (20, 35, 70),
-        "info_label_color": (70, 95, 140),
-        "pack_border": (160, 185, 220),
-        "display_name": "蓝晒模拟",
-    },
-    "cyanotype_highlight_blue": (30, 70, 160),
-    "cyanotype_midtone_blue": (80, 120, 190),
-    "cyanotype_shadow_blue": (140, 175, 220),
-    "cyanotype_paper_white": (230, 238, 250),
 }
 
 def get_system_font(size):
@@ -132,19 +117,24 @@ def open_folder(path):
 
 def load_config():
     config_path = os.path.join(_config_dir(), CONFIG_FILE)
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
+    cfg = {
         "pack_images": [],
         "pack_position": "left",
         "pack_border_stroke": True,
         "render_style": "lightbox",
         "pack_size": 80,
     }
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+                cfg.update(loaded)
+        except Exception:
+            pass
+    # Clean up stale render_style values (e.g. removed "cyanotype")
+    if cfg.get("render_style") not in STYLE_COLORS:
+        cfg["render_style"] = "lightbox"
+    return cfg
 
 def save_config(data):
     config_dir = _config_dir()

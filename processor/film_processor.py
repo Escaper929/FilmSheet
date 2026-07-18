@@ -4,7 +4,6 @@ import os
 import math
 import random
 import time
-import json
 import threading
 import subprocess
 import re
@@ -137,16 +136,6 @@ class FilmProcessor:
     def cancel(self):
         self.is_cancelled = True
 
-    def draw_edge_text_at(self, draw, text, x, y, font_size, style="lightbox"):
-        if not text:
-            return
-        font = self._load_font(font_size)
-        if not font:
-            return
-        colors = STYLE_COLORS.get(style, STYLE_COLORS["lightbox"])
-        color = colors["text_color"]
-        draw.text((x, int(y)), text, fill=color, font=font, anchor="mm")
-
     def crop_to_135_ratio(self, img):
         w, h = img.size
         target_ratio = 36.0 / 24.0
@@ -158,50 +147,6 @@ class FilmProcessor:
             new_h = int(w / target_ratio)
             top = (h - new_h) // 2
             return img.crop((0, top, w, top + new_h))
-
-    def _apply_cyanotype(self, img):
-        """Convert image to cyanotype effect.
-
-        Real cyanotype: light areas become deep Prussian blue,
-        shadow areas become paper-white/light blue.
-        Uses luminance mapping to simulate UV exposure.
-        """
-        # Build cyanotype color LUT for each luminance value
-        cyan_lut = []
-        for lum in range(256):
-            if lum > 200:
-                r, g, b = 25, 55, 145
-            elif lum > 150:
-                t = (lum - 150) / 50.0
-                r = int(25 + t * 45)
-                g = int(55 + t * 55)
-                b = int(145 + t * 20)
-            elif lum > 80:
-                t = (lum - 80) / 70.0
-                r = int(70 + t * 55)
-                g = int(100 + t * 40)
-                b = int(170 + t * 20)
-            elif lum > 30:
-                t = (lum - 30) / 50.0
-                r = int(150 + t * 50)
-                g = int(175 + t * 45)
-                b = int(210 + t * 25)
-            else:
-                r = int(220 + (lum / 30) * 15)
-                g = int(228 + (lum / 30) * 10)
-                b = int(240 + (lum / 30) * 10)
-            cyan_lut.append((r, g, b))
-
-        # Convert to grayscale, then remap each pixel via LUT
-        gray = img.convert('L')
-        w, h = gray.size
-        result = Image.new('RGB', (w, h))
-        px = gray.load()
-        rx = result.load()
-        for y in range(h):
-            for x in range(w):
-                rx[x, y] = cyan_lut[px[x, y]]
-        return result
 
     def cover_resize_crop(self, img, target_w, target_h):
         img_w, img_h = img.size
@@ -224,9 +169,6 @@ class FilmProcessor:
                 img = img.convert('RGB')
             if self.config.get('processing_mode') == 'negative':
                 img = ImageOps.invert(img)
-            # Cyanotype: invert positive scan to simulate negative exposure
-            if self.config.get('render_style') == 'cyanotype':
-                img = self._apply_cyanotype(img)
             w, h = img.size
             if self.config.get('force_landscape', True) and h > w:
                 img = img.rotate(-90, expand=True)
@@ -244,9 +186,6 @@ class FilmProcessor:
                 img = img.convert('RGB')
             if self.config.get('processing_mode') == 'negative':
                 img = ImageOps.invert(img)
-            # Cyanotype: invert positive scan to simulate negative exposure
-            if self.config.get('render_style') == 'cyanotype':
-                img = self._apply_cyanotype(img)
             w, h = img.size
             if self.config['force_landscape'] and h > w:
                 img = img.rotate(-90, expand=True)
@@ -840,7 +779,122 @@ class FilmProcessor:
 
     def _render_preview_120(self, images):
         """轻量级 120 预览渲染，无 AA，无保存，无文件夹打开。"""
-        pass  # stub — implementation merged below
+        cols = self.config['columns']
+        rows = math.ceil(len(images) / cols)
+        thumb_w = self.config['thumb_width']
+        spacing = int(self.config['spacing'] * thumb_w / 400)
+        base_scale = thumb_w / 400.0
+
+        sub_format = self.config.get('sub_format', '66')
+        target_ratio = FILM_FORMAT_RATIOS.get(sub_format, 1.0)
+
+        content_w = (cols * thumb_w) + ((cols + 1) * spacing)
+        side_margin = int(50 * base_scale)
+        top_margin = int(25 * base_scale)
+        total_w = content_w + (side_margin * 2) + int(100 * base_scale)
+
+        fixed_h = int(thumb_w / target_ratio)
+        row_h = fixed_h + (spacing * 2)
+        strip_h = int(25 * base_scale) + row_h + int(25 * base_scale)
+        bag_gap = int(50 * base_scale)
+
+        pack_img_path = self.config.get('pack_image', '')
+        pack_position = self.config.get('pack_position', 'left')
+        pack_img = None
+        if pack_img_path and os.path.exists(pack_img_path):
+            try:
+                pack_img = Image.open(pack_img_path).convert('RGB')
+            except Exception:
+                pass
+
+        has_pack_stroke = self.config.get('pack_border_stroke', True)
+        pack_border = max(2, int(2 * base_scale)) if has_pack_stroke else 0
+        pack_gap = int(20 * base_scale)
+
+        info_height, _, _, _, _, _, _, has_info = \
+            self._compute_info_height(thumb_w, base_scale, pack_img)
+
+        info_to_film_gap = int(65 * base_scale)
+        top_area_height = top_margin + info_height + info_to_film_gap
+        top_region_height = top_margin + info_height
+        bottom_margin = int(top_region_height * 2.0) if info_height == 0 else int(top_region_height * 1.6)
+        total_h = int(top_area_height + (rows * strip_h) + ((rows - 1) * bag_gap) + bottom_margin)
+
+        render_style = self.config.get('render_style', 'lightbox')
+        colors = STYLE_COLORS.get(render_style, STYLE_COLORS["lightbox"])
+
+        canvas = Image.new('RGB', (total_w, total_h), colors["canvas_bg"])
+        draw = ImageDraw.Draw(canvas)
+
+        text_area_left = side_margin
+        text_area_right = total_w - side_margin
+        if pack_img and info_height > 0:
+            orig_w, orig_h = pack_img.size
+            pack_size_pct = self.config.get('pack_size', 80)
+            if isinstance(pack_size_pct, str):
+                try:
+                    pack_size_pct = int(pack_size_pct)
+                except ValueError:
+                    pack_size_pct = 80
+            top_blank_height = top_margin + info_height + info_to_film_gap
+            pack_h_display = min(int(top_blank_height * pack_size_pct / 100.0), 100)
+            pack_w_display = int(pack_h_display * (orig_w / orig_h))
+            if pack_w_display > int(total_w * 0.35):
+                pack_w_display = int(total_w * 0.35)
+                pack_h_display = int(pack_w_display * (orig_h / orig_w))
+            if pack_w_display > 0 and pack_h_display > 0:
+                resized_pack = pack_img.resize((pack_w_display, pack_h_display), Image.Resampling.LANCZOS)
+                pack_y = (top_blank_height - pack_h_display) // 2
+                if pack_position == 'left':
+                    pack_x = side_margin
+                    if has_pack_stroke:
+                        pb = pack_border
+                        draw.rectangle([pack_x - pb, pack_y - pb, pack_x + pack_w_display + pb, pack_y + pack_h_display + pb],
+                                       outline=colors["pack_border"], width=pb)
+                    canvas.paste(resized_pack, (pack_x, pack_y))
+                    text_area_left = pack_x + pack_w_display + pack_gap
+                else:
+                    pack_x = total_w - side_margin - pack_w_display
+                    if has_pack_stroke:
+                        pb = pack_border
+                        draw.rectangle([pack_x - pb, pack_y - pb, pack_x + pack_w_display + pb, pack_y + pack_h_display + pb],
+                                       outline=colors["pack_border"], width=pb)
+                    canvas.paste(resized_pack, (pack_x, pack_y))
+                    text_area_right = pack_x - pack_gap
+
+        if has_info:
+            font_main = self._load_font(int(34 * thumb_w / 400))
+            if font_main:
+                self._draw_info_block(draw, font_main, colors, text_area_left, text_area_right,
+                                      top_margin, int(20 * thumb_w / 400), int(52 * thumb_w / 400),
+                                      thumb_w / 400.0, thumb_w)
+
+        edge_text = self._generate_edge_text()
+        film_base = colors["film_base"]
+
+        img_idx = 0
+        for row in range(rows):
+            y1 = int(top_area_height + row * (strip_h + bag_gap))
+            y2 = y1 + strip_h
+            draw.rectangle([0, y1, total_w, y2], fill=film_base)
+
+            # 120 no perforations, just edge text
+            edge_font = self._load_font(int(14 * thumb_w / 400 * 0.85))
+            if edge_font:
+                draw.text((total_w // 2, y1 + 10), edge_text, fill=colors["text_color"], font=edge_font, anchor="mm")
+                draw.text((total_w // 2, y2 - 10), edge_text, fill=colors["text_color"], font=edge_font, anchor="mm")
+
+            start_col = 2 if row == 0 else 0
+            for col in range(start_col, cols):
+                if img_idx >= len(images):
+                    break
+                x_pos = side_margin + spacing + col * (thumb_w + spacing)
+                y_img_top = y1 + int(25 * base_scale) + spacing
+                big_img = self.cover_resize_crop(images[img_idx], thumb_w, fixed_h)
+                canvas.paste(big_img, (int(x_pos), int(y_img_top)))
+                img_idx += 1
+
+        return canvas
 
     def _render_120(self, images, status_callback, progress_callback):
         sub_format = self.config.get('sub_format', '66')
@@ -875,7 +929,6 @@ class FilmProcessor:
         has_pack_stroke = self.config.get('pack_border_stroke', True)
         pack_border = max(2, int(2 * base_scale)) if has_pack_stroke else 0
         pack_gap = int(20 * base_scale)
-        safe_padding = int(15 * base_scale)
 
         # 共享 helper：计算 info 区域高度
         info_height, info_font_size, info_line_height, info_top_padding, info_bottom_padding, info_data, label_idx, has_info = \
@@ -1023,7 +1076,6 @@ class FilmProcessor:
                     big_draw.text((x_pos, edge_y_bottom), edge_text, fill=color, font=font, anchor="mm")
 
             # ---- 放置图片 ----
-            big_y_img_top = big_current_y + int(25 * base_scale * aa_scale) + spacing * aa_scale
             for col in range(cols):
                 if img_idx >= len(images):
                     break
