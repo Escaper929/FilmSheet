@@ -117,15 +117,17 @@ jobs:
 
       - name: 检查产物
         run: |
-          dir artifacts
-          if (-not (Test-Path "artifacts/FilmSheet-macOS/FilmSheet-macOS.zip")) {
-            Write-Error "macOS artifact not found"
+          ls -la artifacts/
+          ls -la artifacts/FilmSheet-macOS/
+          ls -la artifacts/FilmSheet-Windows/
+          if [ ! -f "artifacts/FilmSheet-macOS/FilmSheet-macOS.zip" ]; then
+            echo "macOS artifact not found"
             exit 1
-          }
-          if (-not (Test-Path "artifacts/FilmSheet-Windows/FilmSheet-Windows.zip")) {
-            Write-Error "Windows artifact not found"
+          fi
+          if [ ! -f "artifacts/FilmSheet-Windows/FilmSheet-Windows.zip" ]; then
+            echo "Windows artifact not found"
             exit 1
-          }
+          fi
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v1
