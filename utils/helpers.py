@@ -123,6 +123,10 @@ def load_config():
         "pack_border_stroke": True,
         "render_style": "lightbox",
         "pack_size": 80,
+        "signature": "",
+        "batch_export_enabled": False,
+        "templates": {},
+        "current_template": "",
     }
     if os.path.exists(config_path):
         try:

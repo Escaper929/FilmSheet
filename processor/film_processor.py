@@ -229,7 +229,7 @@ class FilmProcessor:
                     ext = '.jpg'
                 new_path = os.path.join(dirname, name + ext)
                 self.config['output_path'] = new_path
-        # ---- 继续原有流程 ----
+
         try:
             files = sorted([
                 os.path.join(self.config['input_folder'], f)
@@ -239,56 +239,115 @@ class FilmProcessor:
             if not files:
                 return "错误：文件夹中没有图片。"
 
-            total_files = len(files)
             is_120 = (self.config['film_format'] == "120")
+            batch_enabled = self.config.get('batch_export_enabled', False)
 
-            if is_120:
-                target_ratio = FILM_FORMAT_RATIOS.get(self.config['sub_format'], 1.0)
-                thumb_w = self.config['thumb_width']
-                processed_imgs = []
-                status_callback("正在处理 120 图片...")
-                cpu_count = os.cpu_count() or 4
-                max_workers = max(4, cpu_count)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    future_to_file = {}
-                    for f in files:
-                        future = executor.submit(
-                            self._process_120_image, f, target_ratio, thumb_w
-                        )
-                        future_to_file[future] = f
-                    for i, future in enumerate(as_completed(future_to_file)):
-                        if self.is_cancelled:
-                            return "已取消"
-                        img = future.result()
-                        if img:
-                            processed_imgs.append(img)
-                        progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
-                if not processed_imgs:
-                    return "错误：所有图片处理失败。"
-                return self._render_120(processed_imgs, status_callback, progress_callback)
+            # ---- 图片预处理（只做一次） ----
+            processed_imgs = self._process_images(files, is_120, total_files=len(files),
+                                                   status_callback=status_callback,
+                                                   progress_callback=progress_callback)
+            if processed_imgs is None:
+                return "已取消"
+            if not processed_imgs:
+                return "错误：所有图片处理失败。"
+
+            # ---- 渲染 ----
+            if batch_enabled:
+                # Render all styles
+                styles = list(STYLE_COLORS.keys())
             else:
-                thumb_w = self.config['thumb_width']
-                processed_imgs = []
-                status_callback("正在处理 135 图片...")
-                cpu_count = os.cpu_count() or 4
-                max_workers = max(4, cpu_count)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    future_to_file = {
-                        executor.submit(self.process_single_image, f, thumb_w): f
-                        for f in files
-                    }
-                    for i, future in enumerate(as_completed(future_to_file)):
-                        if self.is_cancelled:
-                            return "已取消"
-                        img = future.result()
-                        if img:
-                            processed_imgs.append(img)
-                        progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
-                if not processed_imgs:
-                    return "错误：所有图片处理失败。"
-                return self._render_135(processed_imgs, status_callback, progress_callback)
+                styles = [self.config.get('render_style', 'lightbox')]
+
+            results = []
+            for style_idx, style in enumerate(styles):
+                if self.is_cancelled:
+                    return "已取消"
+
+                batch_config = dict(self.config)
+                batch_config['render_style'] = style
+
+                # Adjust output path with style suffix
+                out_path = batch_config['output_path']
+                name, ext = os.path.splitext(out_path)
+                batch_config['output_path'] = f"{name}_{style}{ext}"
+
+                # Create a processor with modified config
+                batch_proc = FilmProcessor(batch_config)
+                # Copy images and state
+                batch_proc.images = processed_imgs if hasattr(self, 'images') else []
+                batch_proc.is_cancelled = self.is_cancelled
+
+                # Adjust progress range for batch
+                if batch_enabled and len(styles) > 1:
+                    start_pct = 50 + style_idx * (50 // len(styles))
+                    end_pct = 50 + (style_idx + 1) * (50 // len(styles))
+
+                    def batch_sc(msg):
+                        status_callback(msg)
+                    def batch_pc(val, msg):
+                        adjusted = start_pct + int((val - 50) * (end_pct - start_pct) / 50) if end_pct > start_pct else val
+                        progress_callback(min(adjusted, 100), f"渲染[{style}]: {msg}")
+
+                    result = batch_proc._render_135(processed_imgs, batch_sc, batch_pc) if not is_120 \
+                             else batch_proc._render_120(processed_imgs, batch_sc, batch_pc)
+                else:
+                    result = batch_proc._render_135(processed_imgs, status_callback, progress_callback) if not is_120 \
+                             else batch_proc._render_120(processed_imgs, status_callback, progress_callback)
+
+                results.append(result)
+
+            # Return combined result
+            if all(r == "success" for r in results):
+                return "success"
+            elif "已取消" in results:
+                return "已取消"
+            else:
+                return "; ".join(r for r in results if r != "success")
+
         except Exception as e:
             return f"错误: {str(e)}"
+
+    def _process_images(self, files, is_120, total_files, status_callback, progress_callback):
+        """Process images (crop/resize) and return list of PIL Images."""
+        if is_120:
+            target_ratio = FILM_FORMAT_RATIOS.get(self.config['sub_format'], 1.0)
+            thumb_w = self.config['thumb_width']
+            status_callback("正在处理图片...")
+            cpu_count = os.cpu_count() or 4
+            max_workers = max(4, cpu_count)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_file = {}
+                for f in files:
+                    future = executor.submit(self._process_120_image, f, target_ratio, thumb_w)
+                    future_to_file[future] = f
+                imgs = []
+                for i, future in enumerate(as_completed(future_to_file)):
+                    if self.is_cancelled:
+                        return None
+                    img = future.result()
+                    if img:
+                        imgs.append(img)
+                    progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
+            return imgs
+        else:
+            thumb_w = self.config['thumb_width']
+            status_callback("正在处理图片...")
+            cpu_count = os.cpu_count() or 4
+            max_workers = max(4, cpu_count)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_file = {
+                    executor.submit(self.process_single_image, f, thumb_w): f
+                    for f in files
+                }
+                imgs = []
+                for i, future in enumerate(as_completed(future_to_file)):
+                    if self.is_cancelled:
+                        return None
+                    img = future.result()
+                    if img:
+                        imgs.append(img)
+                    progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
+            return imgs
 
     def _render_135(self, images, status_callback, progress_callback):
         """使用物理级 135 引擎渲染（支持多种子画幅）"""
@@ -360,7 +419,9 @@ class FilmProcessor:
         renderer._draw_pack_image(canvas, layout)
         renderer._draw_info_block(canvas, layout)
         renderer._draw_strips(canvas, layout)
+        renderer._draw_watermark(canvas, layout)
         return renderer._downscale_if_aa(canvas, layout)
+
     def _render_preview_120(self, images):
         """轻量级 120 预览渲染，无 AA，无保存，无文件夹打开。"""
         renderer = Renderer120(
@@ -373,6 +434,7 @@ class FilmProcessor:
         renderer._draw_pack_image(canvas, layout)
         renderer._draw_info_block(canvas, layout)
         renderer._draw_strips(canvas, layout)
+        renderer._draw_watermark(canvas, layout)
         return renderer._downscale_if_aa(canvas, layout)
 
     def _render_120(self, images, status_callback, progress_callback):

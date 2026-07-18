@@ -47,6 +47,7 @@ class BaseRenderer:
         result = self._draw_strips(canvas, layout)
         if result == "已取消":
             return "已取消"
+        self._draw_watermark(canvas, layout)
         canvas = self._downscale_if_aa(canvas, layout)
 
         if self.is_preview:
@@ -356,3 +357,43 @@ class BaseRenderer:
         else:
             canvas.save(out_path, quality=self.config['quality'], optimize=True)
         open_folder(out_path)
+
+    # -- Watermark ---------------------------------------------------
+
+    def _draw_watermark(self, canvas, layout):
+        """Draw signature watermark at bottom-right of the canvas."""
+        sig = self.config.get('signature', '').strip()
+        if not sig:
+            return
+
+        draw = layout['draw']
+        aa_scale = layout['aa_scale']
+        total_w = layout['big_total_w']
+        total_h = layout['big_total_h']
+        base_scale = layout['base_scale']
+
+        font_size = int(18 * layout['thumb_w'] / 400) * aa_scale
+        font = self.processor._load_font(font_size)
+        if not font:
+            return
+
+        margin = int(30 * base_scale) * aa_scale
+        bbox = draw.textbbox((0, 0), sig, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        x = total_w - margin - text_w
+        y = total_h - margin - text_h
+
+        # Clamp to avoid overflowing canvas
+        if x < margin:
+            x = margin
+        if y < margin:
+            y = margin
+
+        color = self.colors.get("text_color", (255, 255, 255))
+        shadow_color = self.colors.get("text_shadow", (0, 0, 0))
+
+        # Shadow for readability on any background
+        draw.text((x + 1, y + 1), sig, fill=shadow_color, font=font, anchor="lt")
+        draw.text((x, y), sig, fill=color, font=font, anchor="lt")

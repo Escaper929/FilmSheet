@@ -44,6 +44,9 @@ class App:
             'perf_mode': tk.StringVar(value="Auto"),
             'render_style': tk.StringVar(value=cfg.get("render_style", "lightbox")),
             'pack_size': tk.IntVar(value=cfg.get("pack_size", 80)),
+            'signature': tk.StringVar(value=cfg.get("signature", "")),
+            'batch_export_enabled': tk.BooleanVar(value=cfg.get("batch_export_enabled", False)),
+            'current_template': tk.StringVar(value=cfg.get("current_template", "")),
         }
 
         for key in LABEL_MAP:
@@ -52,6 +55,8 @@ class App:
         self.processor = None
         self.info_labels = {}
         self.build_ui()
+        self._refresh_tmpl_combo()
+        self._update_batch_checkbox_label()
 
     def _get_label_text(self, key):
         lang = self.vars['info_lang'].get()
@@ -94,12 +99,27 @@ class App:
         if val == "(无)":
             self.vars['pack_image'].set("")
 
+    def _on_style_changed(self):
+        """Called when render_style radiobutton changes."""
+        self.save_pack_config()
+        self._update_batch_checkbox_label()
+
+    def _update_batch_checkbox_label(self):
+        """Update batch export checkbox text based on current render_style."""
+        style = self.vars['render_style'].get()
+        if style == "contact_sheet":
+            self.batch_cb.config(text="同时生成灯板正片版")
+        else:
+            self.batch_cb.config(text="同时生成接触印相版")
+
     def save_pack_config(self, event=None):
         cfg = load_config()
         cfg["pack_position"] = self.vars['pack_position'].get()
         cfg["pack_border_stroke"] = self.vars['pack_border_stroke'].get()
         cfg["render_style"] = self.vars['render_style'].get()
         cfg["pack_size"] = self.vars['pack_size'].get()
+        cfg["signature"] = self.vars['signature'].get()
+        cfg["batch_export_enabled"] = self.vars['batch_export_enabled'].get()
         save_config(cfg)
 
     def build_ui(self):
@@ -194,21 +214,42 @@ class App:
         style_radio = ttk.Frame(param_frame)
         style_radio.grid(row=2, column=3, columnspan=3, sticky=tk.W)
         ttk.Radiobutton(style_radio, text="灯板正片", variable=self.vars['render_style'],
-                        value="lightbox", command=self.save_pack_config).pack(side=tk.LEFT)
+                        value="lightbox", command=self._on_style_changed).pack(side=tk.LEFT)
         ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
-                        value="contact_sheet", command=self.save_pack_config).pack(side=tk.LEFT, padx=(10,0))
+                        value="contact_sheet", command=self._on_style_changed).pack(side=tk.LEFT, padx=(10,0))
+
+        # ---- 模板管理 ----
+        tmpl_frame = ttk.LabelFrame(main_frame, text="模板管理", padding="5")
+        tmpl_frame.grid(row=2, column=0, columnspan=4, sticky=tk.EW, pady=5)
+
+        ttk.Label(tmpl_frame, text="模板:").grid(row=0, column=0, sticky=tk.W)
+        self.tmpl_combo = ttk.Combobox(tmpl_frame, textvariable=self.vars['current_template'],
+                                        state="readonly", width=18)
+        self.tmpl_combo.grid(row=0, column=1, padx=5)
+        self.tmpl_combo.bind("<<ComboboxSelected>>", self.load_template_from_combo)
+        ttk.Button(tmpl_frame, text="加载", command=self.load_selected_template).grid(row=0, column=2, padx=2)
+        ttk.Button(tmpl_frame, text="保存", command=self.save_new_template).grid(row=0, column=3, padx=2)
+        ttk.Button(tmpl_frame, text="删除", command=self.delete_selected_template).grid(row=0, column=4, padx=2)
 
         # ---- 边字设置 ----
         edge_frame = ttk.LabelFrame(main_frame, text="边字设置", padding="5")
-        edge_frame.grid(row=2, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        edge_frame.grid(row=3, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(edge_frame, text="自定义内容:").grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
         ttk.Label(edge_frame, text="(留空则从'胶卷'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
 
+        # ---- 水印签名 ----
+        sig_frame = ttk.LabelFrame(main_frame, text="水印签名", padding="5")
+        sig_frame.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=5)
+
+        ttk.Label(sig_frame, text="签名:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(sig_frame, textvariable=self.vars['signature'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
+        ttk.Label(sig_frame, text="(留空则不添加水印)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
+
         # ---- 胶卷包装图 ----
         pack_frame = ttk.LabelFrame(main_frame, text="胶卷包装图", padding="10")
-        pack_frame.grid(row=3, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        pack_frame.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(pack_frame, text="图片:").grid(row=0, column=0, sticky=tk.W)
         self.pack_combo = ttk.Combobox(pack_frame, textvariable=self.vars['pack_image'],
@@ -238,7 +279,7 @@ class App:
 
         # ---- 拍摄信息 ----
         info_frame = ttk.LabelFrame(main_frame, text="拍摄信息记录 (选填)", padding="10")
-        info_frame.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        info_frame.grid(row=6, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         lang_frame = ttk.Frame(info_frame)
         lang_frame.grid(row=0, column=0, columnspan=8, sticky=tk.W, pady=(0,5))
@@ -267,7 +308,7 @@ class App:
 
         # ---- 输出选项 ----
         out_frame = ttk.LabelFrame(main_frame, text="输出选项", padding="10")
-        out_frame.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        out_frame.grid(row=7, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(out_frame, text="格式:").grid(row=0, column=0, sticky=tk.W)
         fmt_combo = ttk.Combobox(out_frame, textvariable=self.vars['output_format'],
@@ -281,9 +322,13 @@ class App:
         self.q_val = ttk.Label(out_frame, textvariable=self.vars['quality'], width=3)
         self.update_ext(None)
 
+        # Batch export checkbox
+        self.batch_cb = ttk.Checkbutton(out_frame, text="同时生成接触印相版", variable=self.vars['batch_export_enabled'])
+        self.batch_cb.grid(row=0, column=5, sticky=tk.W, padx=(20,0))
+
         # ---- 控制按钮 ----
         ctrl_frame = ttk.Frame(main_frame)
-        ctrl_frame.grid(row=6, column=0, columnspan=4, pady=15)
+        ctrl_frame.grid(row=8, column=0, columnspan=4, pady=15)
 
         self.progress_bar = ttk.Progressbar(ctrl_frame, orient=tk.HORIZONTAL, length=400, mode='determinate')
         self.progress_bar.pack(side=tk.TOP, fill=tk.X, pady=(0,10))
@@ -297,7 +342,7 @@ class App:
         self.cancel_btn = ttk.Button(btn_frame, text="取消", command=self.cancel_process, state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT, padx=5)
         self.status_lbl = ttk.Label(main_frame, text="FilmSheet Ready", foreground="gray")
-        self.status_lbl.grid(row=7, column=0, columnspan=4, pady=5)
+        self.status_lbl.grid(row=9, column=0, columnspan=4, pady=5)
 
     def toggle_sub_format(self):
         """切换画幅时更新子画幅选项和比例显示"""
@@ -313,6 +358,100 @@ class App:
             if current not in ["645", "66", "67", "68", "69", "612", "617"]:
                 self.vars['sub_format'].set("66")
         self.update_ratio_label()
+
+    # ---- 模板管理 ----
+
+    TEMPLATE_SAVE_KEYS = [
+        'film_format', 'sub_format', 'render_style', 'pack_image', 'pack_position',
+        'pack_size', 'pack_border_stroke', 'processing_mode', 'thumb_width', 'columns',
+        'spacing', 'force_landscape', 'perf_mode', 'output_format', 'quality',
+        'signature', 'batch_export_enabled', 'edge_text',
+    ]
+
+    def _refresh_tmpl_combo(self):
+        cfg = load_config()
+        tmpl_names = list(cfg.get("templates", {}).keys())
+        self.tmpl_combo['values'] = ["(无)"] + tmpl_names
+        current = self.vars['current_template'].get()
+        if current in tmpl_names:
+            self.tmpl_combo.set(current)
+        else:
+            self.tmpl_combo.set("(无)")
+
+    def load_template_from_combo(self, event=None):
+        name = self.vars['current_template'].get()
+        if name and name != "(无)":
+            self.load_selected_template()
+
+    def load_selected_template(self):
+        cfg = load_config()
+        name = self.vars['current_template'].get()
+        if not name or name == "(无)" or name not in cfg.get("templates", {}):
+            return
+        tmpl = cfg["templates"][name]
+        for key in self.TEMPLATE_SAVE_KEYS:
+            if key in tmpl:
+                var = self.vars.get(key)
+                if var:
+                    val = tmpl[key]
+                    if isinstance(var, tk.BooleanVar):
+                        var.set(bool(val))
+                    elif isinstance(var, tk.IntVar):
+                        try:
+                            var.set(int(val))
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        var.set(str(val) if val else "")
+        # Validate pack_image path exists
+        pack_img = tmpl.get('pack_image', '')
+        if pack_img and not os.path.exists(pack_img):
+            messagebox.showwarning("提示", f"模板中的包装图片不存在: {pack_img}")
+        self.status_lbl.config(text=f"已加载模板: {name}", foreground="gray")
+
+    def save_new_template(self):
+        from tkinter import simpledialog
+        name = simpledialog.askstring("保存模板", "请输入模板名称:")
+        if not name:
+            return
+        cfg = load_config()
+        templates = cfg.setdefault("templates", {})
+        # Collect current values for template keys
+        tmpl_data = {}
+        for key in self.TEMPLATE_SAVE_KEYS:
+            var = self.vars.get(key)
+            if var:
+                val = var.get()
+                if isinstance(val, bool):
+                    tmpl_data[key] = val
+                elif isinstance(val, int):
+                    tmpl_data[key] = val
+                else:
+                    tmpl_data[key] = str(val) if val else ""
+        templates[name] = tmpl_data
+        cfg["templates"] = templates
+        cfg["current_template"] = name
+        save_config(cfg)
+        self._refresh_tmpl_combo()
+        self.status_lbl.config(text=f"已保存模板: {name}", foreground="gray")
+
+    def delete_selected_template(self):
+        cfg = load_config()
+        name = self.vars['current_template'].get()
+        if not name or name == "(无)":
+            return
+        if messagebox.askyesno("确认", f"确定删除模板 '{name}' 吗?"):
+            templates = cfg.get("templates", {})
+            if name in templates:
+                del templates[name]
+            cfg["templates"] = templates
+            cfg["current_template"] = ""
+            self.vars['current_template'].set("")
+            save_config(cfg)
+            self._refresh_tmpl_combo()
+            self.status_lbl.config(text=f"已删除模板: {name}", foreground="gray")
+
+    # ---- End 模板管理 ----
 
     def update_ratio_label(self):
         """更新比例显示"""

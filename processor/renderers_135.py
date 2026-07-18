@@ -111,7 +111,7 @@ class Renderer135(BaseRenderer):
         selected_x.sort()
 
         # Edge text 0.9mm from strip edge
-        edge_y_offset = int(0.9 * layout['scale_factor'])
+        edge_y_offset = int(0.9 * layout['scale_factor']) * scale
         edge_y_top = y1 + edge_y_offset
         edge_y_bottom = y2 - edge_y_offset
 
