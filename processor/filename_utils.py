@@ -39,6 +39,9 @@ def generate_output_filename(
 
     parts = [p.strip() for p in [info_roll, info_camera, info_film, info_shoot_date] if p.strip()]
     if not parts:
+        # No info fields filled — return the original output_file unchanged.
+        # The caller (FilmProcessor.run) should already have set output_path
+        # to the correct directory via os.path.join(input_dir, output_name).
         return output_file
 
     name = '_'.join(parts)

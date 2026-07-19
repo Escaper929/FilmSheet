@@ -234,14 +234,20 @@ class FilmProcessor:
         config.update(self.config)  # Preserve user-set values
 
         # Generate output filename
-        config['output_path'] = generate_output_filename(
-            config.get('output_file', 'filmsheet_output.jpg'),
-            config.get('info_roll', ''),
-            config.get('info_camera', ''),
-            config.get('info_film', ''),
-            config.get('info_shoot_date', ''),
-            os.path.dirname(config.get('output_path', '.')),
-        )
+        output_file = config.get('output_file', 'filmsheet_output.jpg')
+        default_names = {'filmsheet_output.jpg', 'filmsheet_output.png', 'filmsheet_output.jpeg'}
+        if output_file.strip() in default_names:
+            new_path = generate_output_filename(
+                output_file,
+                config.get('info_roll', ''),
+                config.get('info_camera', ''),
+                config.get('info_film', ''),
+                config.get('info_shoot_date', ''),
+                os.path.dirname(config.get('output_path', '.')),
+            )
+            # Only update output_path if the new path actually has a directory
+            if '/' in new_path or os.sep in new_path or os.path.dirname(new_path):
+                config['output_path'] = new_path
 
         try:
             files = sorted([

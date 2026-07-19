@@ -80,7 +80,7 @@ class Renderer120(BaseRenderer):
         aa_scale = layout.get('aa_scale', 1)
 
         edge_info = self.processor._generate_edge_text()
-        font_size = int(14 * thumb_w / 400 * 0.85) * aa_scale
+        font_size = int(16 * thumb_w / 400) * aa_scale
         font = self.processor._load_font(font_size)
         if not font:
             return
