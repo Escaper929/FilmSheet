@@ -8,7 +8,7 @@ services:
     command: >
       sh -c "
         apt-get update && apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra git &&
-        git clone https://github.com/Escaper929/FilmSheet.git /filmsheet &&
+        (test -d /filmsheet/.git && cd /filmsheet && git pull) || git clone https://github.com/Escaper929/FilmSheet.git /filmsheet &&
         pip install fastapi uvicorn pillow python-multipart &&
         cd /filmsheet/api && uvicorn main:app --host 0.0.0.0 --port 8000
       "
