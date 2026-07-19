@@ -47,6 +47,12 @@ app = FastAPI(
     version="1.5.0",
 )
 
+# Serve mobile web frontend
+@app.get("/")
+async def serve_web():
+    from fastapi.responses import FileResponse
+    return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

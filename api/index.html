@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FilmSheet 胶片排版</title>
+<style>
+:root {
+  --primary: #ff8c3c;
+  --bg: #1a1a2e;
+  --card: #16213e;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --border: #2a2a4a;
+  --success: #4caf50;
+  --danger: #f44336;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 80px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .api-url {
+  font-size: 11px;
+  color: var(--primary);
+  background: rgba(255,140,60,0.1);
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 48px;
+  z-index: 99;
+}
+.tab {
+  flex: 1;
+  padding: 12px 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* Sections */
+.section { display: none; padding: 16px; }
+.section.active { display: block; }
+
+/* Cards */
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+.card-title {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+/* Form */
+.form-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.form-group {
+  flex: 1;
+}
+.form-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  display: block;
+}
+.form-input, .form-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--primary);
+}
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+/* Radio Group */
+.radio-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.radio-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: 8px 4px;
+  text-align: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-dim);
+}
+.radio-btn.active {
+  background: rgba(255,140,60,0.15);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Slider */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.slider-row label {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 60px;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--primary);
+}
+.slider-row .val {
+  font-size: 13px;
+  color: var(--primary);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Image Upload */
+.upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.upload-area:active {
+  border-color: var(--primary);
+  background: rgba(255,140,60,0.05);
+}
+.upload-icon { font-size: 36px; margin-bottom: 8px; }
+.upload-text { font-size: 13px; color: var(--text-dim); }
+.upload-count { font-size: 12px; color: var(--primary); margin-top: 4px; }
+#fileInput { display: none; }
+
+/* Image Grid */
+.img-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+}
+.img-thumb {
+  aspect-ratio: 3/2;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.img-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.img-thumb .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0,0,0,0.7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Result */
+.result-area {
+  text-align: center;
+  margin-top: 16px;
+}
+.result-img {
+  max-width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.result-placeholder {
+  padding: 60px 20px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* Progress */
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0;
+  display: none;
+}
+.progress-bar.active { display: block; }
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s;
+  width: 0%;
+}
+.progress-text {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* Button */
+.btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), #ff6b35);
+  color: #fff;
+}
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-secondary {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* Bottom Nav */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 100;
+}
+.nav-item {
+  flex: 1;
+  padding: 8px 0 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.nav-item.active { color: var(--primary); }
+.nav-item .nav-icon { font-size: 22px; display: block; margin-bottom: 2px; }
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 999;
+  transition: transform 0.3s;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* Toggle */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.toggle-label { font-size: 13px; }
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-switch.on { background: var(--primary); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+}
+.toggle-switch.on::after { transform: translateX(20px); }
+
+/* API Config Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  border: 1px solid var(--border);
+}
+.modal h3 { font-size: 16px; margin-bottom: 16px; }
+.modal .btn { margin-top: 12px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 0; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>🎞 FilmSheet</h1>
+  <div class="api-url" onclick="showApiModal()">📡 API地址</div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-tab="upload" onclick="switchTab('upload')">📷 上传图片</div>
+  <div class="tab" data-tab="settings" onclick="switchTab('settings')">⚙️ 参数</div>
+  <div class="tab" data-tab="result" onclick="switchTab('result')">🖼 结果</div>
+</div>
+
+<!-- Section: Upload -->
+<div class="section active" id="sec-upload">
+  <div class="card">
+    <div class="card-title">选择图片</div>
+    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📁</div>
+      <div class="upload-text">点击选择或拍照</div>
+      <div class="upload-count" id="uploadCount"></div>
+    </div>
+    <input type="file" id="fileInput" multiple accept="image/*" onchange="handleFiles(this.files)">
+    <div class="img-grid" id="imgGrid"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">胶卷信息</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">胶卷</label>
+        <input class="form-input" id="info_film" placeholder="如：柯达 Portra 400">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">卷号</label>
+        <input class="form-input" id="info_roll" placeholder="如：卷号1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">相机</label>
+        <input class="form-input" id="info_camera" placeholder="如：RZ67">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">拍摄日期</label>
+        <input class="form-input" id="info_shoot_date" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">冲洗日期</label>
+        <input class="form-input" id="info_dev_date" type="date">
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="btnNext" onclick="switchTab('settings')">下一步 →</button>
+</div>
+
+<!-- Section: Settings -->
+<div class="section" id="sec-settings">
+  <div class="card">
+    <div class="card-title">画幅</div>
+    <div class="radio-group" id="filmFormatGroup">
+      <div class="radio-btn active" data-value="135" onclick="selectRadio(this,'filmFormat')">135</div>
+      <div class="radio-btn" data-value="120" onclick="selectRadio(this,'filmFormat')">120</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">子画幅</div>
+    <div class="radio-group" id="subFormatGroup">
+      <!-- Dynamically populated -->
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">成像模式</div>
+    <div class="radio-group" id="procModeGroup">
+      <div class="radio-btn active" data-value="positive" onclick="selectRadio(this,'procMode')">正片</div>
+      <div class="radio-btn" data-value="negative" onclick="selectRadio(this,'procMode')">负片</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">渲染风格</div>
+    <div class="radio-group" id="renderStyleGroup">
+      <div class="radio-btn active" data-value="lightbox" onclick="selectRadio(this,'renderStyle')">灯板正片</div>
+      <div class="radio-btn" data-value="contact_sheet" onclick="selectRadio(this,'renderStyle')">接触印相</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">参数</div>
+    <div class="slider-row">
+      <label>缩略图宽</label>
+      <input type="range" id="thumbWidth" min="300" max="800" value="400" step="50" oninput="updateSliderVal(this,'thumbVal')">
+      <span class="val" id="thumbVal">400</span>
+    </div>
+    <div class="slider-row">
+      <label>每行列数</label>
+      <input type="range" id="columns" min="3" max="10" value="6" oninput="updateSliderVal(this,'colVal')">
+      <span class="val" id="colVal">6</span>
+    </div>
+    <div class="slider-row">
+      <label>间距</label>
+      <input type="range" id="spacing" min="0" max="50" value="20" oninput="updateSliderVal(this,'spVal')">
+      <span class="val" id="spVal">20</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">输出</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">格式</label>
+        <select class="form-select" id="outputFormat">
+          <option value="JPG">JPG</option>
+          <option value="PNG">PNG</option>
+        </select>
+      </div>
+      <div class="form-group" id="qualityGroup">
+        <label class="form-label">质量</label>
+        <select class="form-select" id="quality">
+          <option value="95" selected>95</option>
+          <option value="90">90</option>
+          <option value="80">80</option>
+          <option value="60">60</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">强制横向</span>
+      <div class="toggle-switch on" id="forceLandscape" onclick="toggleSwitch(this)"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">水印签名（可选）</div>
+    <input class="form-input" id="signature" placeholder="留空不添加">
+  </div>
+
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-secondary" onclick="switchTab('upload')" style="flex:1">← 返回</button>
+    <button class="btn btn-primary" id="btnRender" onclick="render()" style="flex:2">🚀 开始渲染</button>
+  </div>
+</div>
+
+<!-- Section: Result -->
+<div class="section" id="sec-result">
+  <div class="card">
+    <div class="card-title">渲染结果</div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-text" id="progressText"></div>
+
+    <div class="result-area" id="resultArea">
+      <div class="result-placeholder">点击"开始渲染"生成胶片排版图</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;" id="resultActions" hidden>
+    <button class="btn btn-secondary" onclick="downloadResult()" style="flex:1">💾 保存图片</button>
+    <button class="btn btn-secondary" onclick="shareResult()" style="flex:1">📤 分享</button>
+  </div>
+
+  <button class="btn btn-secondary" onclick="switchTab('settings')" style="margin-top:8px">← 修改参数</button>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <div class="nav-item active" data-tab="upload" onclick="switchTab('upload')">
+    <span class="nav-icon">📷</span>图片
+  </div>
+  <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">
+    <span class="nav-icon">⚙️</span>参数
+  </div>
+  <div class="nav-item" data-tab="result" onclick="switchTab('result')">
+    <span class="nav-icon">🖼</span>结果
+  </div>
+</div>
+
+<!-- API Config Modal -->
+<div class="modal-overlay" id="apiModal">
+  <div class="modal">
+    <h3>📡 API 地址</h3>
+    <input class="form-input" id="apiUrl" placeholder="http://192.168.0.168:8000" value="">
+    <button class="btn btn-primary" onclick="saveApiUrl()">保存</button>
+    <button class="btn btn-secondary" onclick="hideApiModal()">取消</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== State =====
+let uploadedImages = []; // [{file, url}]
+let config = {
+  film_format: '135',
+  sub_format: '标准 36×24',
+  processing_mode: 'positive',
+  render_style: 'lightbox',
+  thumb_width: 400,
+  columns: 6,
+  spacing: 20,
+  force_landscape: true,
+  output_format: 'JPG',
+  quality: 95,
+  signature: '',
+};
+
+const SUB_FORMATS = {
+  '135': ['标准 36×24', '半格 18×24', '方形 24×24', 'XPan 65×24'],
+  '120': ['645', '66', '67', '68', '69', '612', '617'],
+};
+
+const SUB_FORMAT_COLS = {
+  '标准 36×24': 6, '半格 18×24': 12, '方形 24×24': 8, 'XPan 65×24': 3,
+  '645': 6, '66': 6, '67': 5, '68': 5, '69': 4, '612': 4, '617': 3,
+};
+
+// ===== Init =====
+(function init() {
+  const saved = localStorage.getItem('filmsheet_api_url');
+  if (saved) document.getElementById('apiUrl').value = saved;
+  updateSubFormats();
+})();
+
+function getApiUrl() {
+  return document.getElementById('apiUrl').value.replace(/\/$/, '');
+}
+
+function saveApiUrl() {
+  const url = getApiUrl();
+  localStorage.setItem('filmsheet_api_url', url);
+  hideApiModal();
+  showToast('API地址已保存');
+}
+
+function showApiModal() { document.getElementById('apiModal').classList.add('show'); }
+function hideApiModal() { document.getElementById('apiModal').classList.remove('show'); }
+
+// ===== Tabs =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === tab));
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'sec-' + tab));
+}
+
+// ===== Radio =====
+function selectRadio(el, group) {
+  el.parentElement.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const val = el.dataset.value;
+  if (group === 'filmFormat') {
+    config.film_format = val;
+    config.sub_format = SUB_FORMATS[val][0];
+    updateSubFormats();
+  } else if (group === 'procMode') {
+    config.processing_mode = val;
+  } else if (group === 'renderStyle') {
+    config.render_style = val;
+  }
+}
+
+function updateSubFormats() {
+  const group = document.getElementById('subFormatGroup');
+  group.innerHTML = '';
+  const formats = SUB_FORMATS[config.film_format];
+  formats.forEach(f => {
+    const btn = document.createElement('div');
+    btn.className = 'radio-btn' + (f === config.sub_format ? ' active' : '');
+    btn.textContent = f;
+    btn.onclick = function() {
+      group.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      config.sub_format = f;
+      // Auto-adjust columns
+      const cols = SUB_FORMAT_COLS[f] || 6;
+      config.columns = cols;
+      document.getElementById('columns').value = cols;
+      document.getElementById('colVal').textContent = cols;
+    };
+    group.appendChild(btn);
+  });
+}
+
+// ===== Toggles =====
+function toggleSwitch(el) {
+  el.classList.toggle('on');
+  config.force_landscape = el.classList.contains('on');
+}
+
+// ===== Sliders =====
+function updateSliderVal(input, valId) {
+  document.getElementById(valId).textContent = input.value;
+  const key = input.id;
+  config[key] = parseInt(input.value);
+}
+
+// ===== File Upload =====
+function handleFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const url = URL.createObjectURL(file);
+    uploadedImages.push({ file, url });
+  }
+  renderThumbs();
+}
+
+function renderThumbs() {
+  const grid = document.getElementById('imgGrid');
+  grid.innerHTML = '';
+  uploadedImages.forEach((img, i) => {
+    const div = document.createElement('div');
+    div.className = 'img-thumb';
+    div.innerHTML = `<img src="${img.url}"><div class="remove-btn" onclick="removeImage(${i})">×</div>`;
+    grid.appendChild(div);
+  });
+  document.getElementById('uploadCount').textContent = uploadedImages.length + ' 张';
+}
+
+function removeImage(i) {
+  URL.revokeObjectURL(uploadedImages[i].url);
+  uploadedImages.splice(i, 1);
+  renderThumbs();
+}
+
+// ===== Render =====
+async function render() {
+  if (uploadedImages.length === 0) {
+    showToast('请先上传图片');
+    return;
+  }
+
+  // Collect info fields
+  config.info_roll = document.getElementById('info_roll').value.trim();
+  config.info_camera = document.getElementById('info_camera').value.trim();
+  config.info_film = document.getElementById('info_film').value.trim();
+  config.info_shoot_date = document.getElementById('info_shoot_date').value;
+  config.info_dev_date = document.getElementById('info_dev_date').value;
+  config.info_proc = '';
+  config.info_lab = '';
+  config.info_scanner = '';
+  config.info_lang = 'zh';
+  config.perf_mode = 'Auto';
+  config.edge_text = '';
+  config.pack_image_path = '';
+  config.pack_position = 'left';
+  config.pack_border_stroke = true;
+  config.pack_size = 80;
+  config.signature = document.getElementById('signature').value.trim();
+  config.output_format = document.getElementById('outputFormat').value;
+  config.quality = parseInt(document.getElementById('quality').value);
+
+  const btn = document.getElementById('btnRender');
+  btn.disabled = true;
+  btn.textContent = '⏳ 渲染中...';
+
+  // Show progress
+  document.getElementById('progressBar').classList.add('active');
+  document.getElementById('progressFill').style.width = '10%';
+  document.getElementById('progressText').textContent = '正在上传图片...';
+
+  // Switch to result tab
+  switchTab('result');
+
+  const formData = new FormData();
+  uploadedImages.forEach(img => formData.append('images', img.file));
+
+  // Append config params
+  Object.entries(config).forEach(([key, val]) => {
+    if (typeof val === 'boolean') val = String(val);
+    formData.append(key, val);
+  });
+
+  try {
+    document.getElementById('progressFill').style.width = '30%';
+    document.getElementById('progressText').textContent = '正在渲染...';
+
+    const resp = await fetch(getApiUrl() + '/render', { method: 'POST', body: formData });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(txt);
+    }
+
+    document.getElementById('progressFill').style.width = '80%';
+    document.getElementById('progressText').textContent = '正在获取结果...';
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+
+    document.getElementById('progressFill').style.width = '100%';
+    document.getElementById('progressText').textContent = '完成！';
+
+    const area = document.getElementById('resultArea');
+    area.innerHTML = `<img class="result-img" src="${url}" id="resultImg" alt="渲染结果">`;
+    document.getElementById('resultActions').hidden = false;
+
+    showToast('✅ 渲染成功');
+  } catch (e) {
+    showToast('❌ ' + e.message);
+    document.getElementById('resultArea').innerHTML = '<div class="result-placeholder">渲染失败<br><small>' + e.message + '</small></div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 开始渲染';
+    setTimeout(() => {
+      document.getElementById('progressBar').classList.remove('active');
+    }, 2000);
+  }
+}
+
+function downloadResult() {
+  const img = document.getElementById('resultImg');
+  if (!img) return;
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = 'filmsheet_' + Date.now() + '.jpg';
+  a.click();
+}
+
+async function shareResult() {
+  const img = document.getElementById('resultImg');
+  if (!img) return;
+  try {
+    const blob = await (await fetch(img.src)).blob();
+    const file = new File([blob], 'filmsheet.jpg', { type: 'image/jpeg' });
+    if (navigator.share) {
+      await navigator.share({ files: [file], title: 'FilmSheet 胶片排版' });
+    } else {
+      showToast('您的浏览器不支持分享');
+    }
+  } catch (e) {
+    showToast('分享失败: ' + e.message);
+  }
+}
+
+// ===== Toast =====
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
