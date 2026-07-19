@@ -43,7 +43,7 @@ from utils.helpers import (
 
 app = FastAPI(
     title="FilmSheet API",
-    description="胶片扫描排版渲染服务",
+    description="胶片扫描排版渲染服务 — 把你的数码扫描件变成真实的灯箱灯板 / 接触印相作品。",
     version="1.5.0",
 )
 
@@ -462,36 +462,36 @@ def _render_135_api(
 # API Endpoint
 # ---------------------------------------------------------------------------
 
-@app.post("/render")
+@app.post("/render", summary="渲染胶片排版图", description="上传图片和配置参数，返回渲染好的胶片排版图片（JPEG/PNG）。")
 async def render_film_sheet(
-    images: list[UploadFile],
-    film_format: str = Form("135"),
-    sub_format: str = Form("标准 36×24"),
-    thumb_width: int = Form(400),
-    columns: int = Form(6),
-    spacing: int = Form(20),
-    force_landscape: bool = Form(True),
-    processing_mode: str = Form("positive"),
-    render_style: str = Form("lightbox"),
-    output_format: str = Form("JPG"),
-    quality: int = Form(95),
-    info_roll: str = Form(""),
-    info_camera: str = Form(""),
-    info_film: str = Form(""),
-    info_shoot_date: str = Form(""),
-    info_dev_date: str = Form(""),
-    info_proc: str = Form(""),
-    info_lab: str = Form(""),
-    info_scanner: str = Form(""),
-    info_lang: str = Form("en"),
-    edge_text: str = Form(""),
-    pack_image_path: str = Form(""),
-    pack_position: str = Form("left"),
-    pack_border_stroke: bool = Form(True),
-    pack_size: int = Form(80),
-    perf_mode: str = Form("Auto"),
-    signature: str = Form(""),
-    is_preview: bool = Form(False),
+    images: list[UploadFile] = Form(..., description="胶片扫描图片（支持 JPG/PNG/TIFF/BMP，可多选）"),
+    film_format: str = Form("135", description="画幅：135 或 120"),
+    sub_format: str = Form("标准 36×24", description="子画幅：135 支持 标准/半格/方形/XPan；120 支持 645/66/67/68/69/612/617"),
+    thumb_width: int = Form(400, ge=300, le=800, description="缩略图宽度（300-800px，越大越清晰）"),
+    columns: int = Form(6, ge=3, le=10, description="每行列数"),
+    spacing: int = Form(20, description="图片间距"),
+    force_landscape: bool = Form(True, description="强制横向（竖图自动旋转90°）"),
+    processing_mode: str = Form("positive", description="成像模式：positive 正片 / negative 负片"),
+    render_style: str = Form("lightbox", description="渲染风格：lightbox 灯板正片 / contact_sheet 接触印相"),
+    output_format: str = Form("JPG", description="输出格式：JPG 或 PNG"),
+    quality: int = Form(95, ge=1, le=100, description="JPG 质量（1-100，仅 JPG 有效）"),
+    info_roll: str = Form("", description="卷号（用于自动命名和边字）"),
+    info_camera: str = Form("", description="相机型号"),
+    info_film: str = Form("", description="胶卷名称（用于边字自动识别品牌）"),
+    info_shoot_date: str = Form("", description="拍摄日期"),
+    info_dev_date: str = Form("", description="冲洗日期"),
+    info_proc: str = Form("", description="冲洗方式"),
+    info_lab: str = Form("", description="冲洗地点"),
+    info_scanner: str = Form("", description="扫描仪型号"),
+    info_lang: str = Form("en", description="标签语言：zh 中文 / en 英文"),
+    edge_text: str = Form("", description="自定义边字（留空则自动从胶卷信息生成）"),
+    pack_image_path: str = Form("", description="胶卷包装图片路径（可选）"),
+    pack_position: str = Form("left", description="包装图位置：left 左侧 / right 右侧"),
+    pack_border_stroke: bool = Form(True, description="包装图描边"),
+    pack_size: int = Form(80, ge=10, le=100, description="包装图大小百分比"),
+    perf_mode: str = Form("Auto", description="齿孔模式：Auto 自动 / KS 民用 / BH 电影"),
+    signature: str = Form("", description="水印签名（右下角显示）"),
+    is_preview: bool = Form(False, description="预览模式（关闭抗锯齿，加快渲染）"),
 ):
     """Render a film sheet from uploaded images + config.
 
@@ -546,8 +546,7 @@ async def render_film_sheet(
 
     # Route to renderer
     if film_format == "120":
-        # TODO: implement 120 API renderer (reuse _render_120_api logic)
-        return Response(content="120 模式暂不支持 API", media_type="text/plain", status_code=501)
+        return Response(content="120 模式暂不支持 API，敬请期待", media_type="text/plain", status_code=501)
 
     canvas = _render_135_api(pil_images, config, is_preview=is_preview)
 
