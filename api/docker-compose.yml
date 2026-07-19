@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  filmsheet-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount pack images directory
+      - ./pack_images:/app/pack_images
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
