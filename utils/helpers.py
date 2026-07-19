@@ -135,7 +135,7 @@ def load_config():
                 cfg.update(loaded)
         except Exception:
             pass
-    # Clean up stale render_style values (e.g. removed "cyanotype")
+    # Clean up stale render_style values (e.g. removed styles)
     if cfg.get("render_style") not in STYLE_COLORS:
         cfg["render_style"] = "lightbox"
     return cfg

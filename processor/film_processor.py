@@ -120,16 +120,155 @@ class FilmProcessor:
         return label_idx, slot_widths
 
     def _generate_edge_text(self):
-        """Build edge text from info_film field or use custom text."""
-        custom = self.config.get('edge_text', '')
+        """Build edge text from info_film field or use custom text.
+
+        Returns a dict with structured fields:
+            brand: str (e.g. "KODAK")
+            film_type: str (e.g. "Portra 400")
+            lot_code: str (e.g. "E0 3221")
+            direction: str ("\u25c0")
+            custom: bool
+        """
+        custom = self.config.get('edge_text', '').strip()
         if custom:
-            return custom
-        info_film = self.config.get('info_film', '')
-        parts = info_film.split()
-        brand = parts[0].upper() if parts else "KODAK"
-        # Join remaining parts so "KODAK Portra 400" stays intact
-        film_type = ' '.join(parts[1:]) if len(parts) > 1 else "5207"
-        return f"{brand}  {film_type} ◀"
+            return {"brand": custom, "film_type": "", "lot_code": "", "direction": "", "custom": True}
+
+        info_film = self.config.get('info_film', '').strip()
+        upper_film = info_film.upper()
+
+        # Cinema/motion picture keywords -> Eastman (full-text match first)
+        cinema_keywords = ['VISION3', 'CINEVISION', 'EKTACHROME', 'MOTION PICTURE',
+                           '5207', '5219', '5294', '5203', '5222']
+        if any(kw in upper_film for kw in cinema_keywords):
+            brand = "EASTMAN"
+            # Strip brand prefix from film_type to avoid duplication
+            parts = info_film.split()
+            raw_brand = parts[0] if parts else ""
+            # Remove Chinese brand prefix
+            brand_prefixes = ['柯达', 'Kodak', 'KODAK', '富士', 'FUJIFILM']
+            stripped = info_film
+            for bp in brand_prefixes:
+                if stripped.startswith(bp):
+                    stripped = stripped[len(bp):].strip()
+                    break
+            film_type = stripped
+        else:
+            parts = info_film.split()
+            raw_brand = parts[0] if parts else ""
+            raw_film_type = ' '.join(parts[1:]) if len(parts) > 1 else ""
+
+            # Chinese brand -> English mapping
+            brand_map = {
+                '柯达': 'KODAK', 'Kodak': 'KODAK', 'KODAK': 'KODAK',
+                '富士': 'FUJIFILM', 'Fujifilm': 'FUJIFILM', 'FUJIFILM': 'FUJIFILM',
+                '柯尼卡': 'KONICA', 'Konica': 'KONICA', 'KONICA': 'KONICA',
+                '伊尔福': 'ILFORD', 'Ilford': 'ILFORD', 'ILFORD': 'ILFORD',
+                '阿克发': 'AGFA', 'Agfa': 'AGFA', 'AGFA': 'AGFA',
+                '乐凯': 'LUCKY', 'Lucky': 'LUCKY', 'LUCKY': 'LUCKY',
+                '波尔': 'PORST', 'Porst': 'PORST', 'PORST': 'PORST',
+                '斯达法': 'STADIA', 'Stadia': 'STADIA', 'STADIA': 'STADIA',
+                '哈苏': 'HASSELBLAD', 'Hasselblad': 'HASSELBLAD',
+            }
+            brand = brand_map.get(raw_brand, raw_brand.upper())
+
+            # Chinese film type -> English mapping (partial match)
+            type_map = {
+                'Portra 160': 'Portra 160', 'Portra 160nc': 'Portra 160NC',
+                'Portra 400': 'Portra 400', 'Portra 400nc': 'Portra 400NC',
+                'Portra 800': 'Portra 800',
+                'Ektar 100': 'Ektar 100',
+                'Gold 200': 'Gold 200', 'Ultramax 200': 'Ultramax 200',
+                'Ultramax 400': 'Ultramax 400', 'Supra 200': 'Supra 200',
+                'Supra 400': 'Supra 400',
+                'ColorPlus 200': 'ColorPlus 200',
+                'Tri-X 400': 'Tri-X 400', 'T-Max 100': 'T-Max 100',
+                'T-Max 400': 'T-Max 400', 'Panatomic-X': 'Panatomic-X',
+                'Pro 400H': 'Pro 400H',
+                'Velvia 50': 'Velvia 50', 'Provia 100F': 'Provia 100F',
+                'Astia 100F': 'Astia 100F', 'Eterna 500T': 'Eterna 500T',
+                'Vision3 500T': 'Vision3 500T', 'Vision3 250D': 'Vision3 250D',
+                'Vision3 50D': 'Vision3 50D',
+                'Superia 200': 'Superia 200', 'Superia 400': 'Superia 400',
+                'Superia 800': 'Superia 800',
+                'CineVision 500T': 'CineVision 500T',
+                '5207': '5207', '5219': '5219', '5294': '5294', '5203': '5203',
+                '5222': '5222',
+                '横轴': '横轴', '纵轴': '纵轴',
+            }
+            film_type = raw_film_type
+            for cn, en in type_map.items():
+                if cn in raw_film_type:
+                    film_type = en
+                    break
+            if not film_type:
+                film_type = raw_film_type
+
+        # Generate a consistent lot code from brand + film_type
+        lot_hash = hash(brand + film_type) & 0xFFFFFF
+        lot_code = f"E{lot_hash // 10000 % 10} {lot_hash % 10000:04d}"
+
+        return {
+            "brand": brand,
+            "film_type": film_type,
+            "lot_code": lot_code,
+            "direction": "\u25c0",
+            "custom": False,
+        }
+
+    def _draw_edge_text_on_strip(self, draw, edge_info, font, color, x, y_top, y_bottom, img_num=None):
+        """Draw structured edge text on a film strip (top and bottom margins).
+
+        Real Kodak/Fujifilm edge text layout:
+          Top:    BRAND  FILM_TYPE
+          Bottom: IMG_NUM  ◃ (narrow triangle pointing left)
+        """
+        if edge_info.get("custom"):
+            draw.text((x, y_top), edge_info["brand"], fill=color, font=font, anchor="mm")
+            draw.text((x, y_bottom), edge_info["brand"], fill=color, font=font, anchor="mm")
+            return
+
+        brand = edge_info["brand"]
+        film_type = edge_info["film_type"]
+
+        # Top edge: "BRAND  FILM_TYPE"
+        top_parts = [brand]
+        if film_type:
+            top_parts.append(film_type)
+        top_line = "  ".join(top_parts)
+
+        # Bottom edge: sequential number + narrow triangle
+        if img_num is not None:
+            bottom_line = f"{img_num}"
+        else:
+            bottom_line = ""
+
+        draw.text((x, y_top), top_line, fill=color, font=font, anchor="mm")
+        draw.text((x, y_bottom), bottom_line, fill=color, font=font, anchor="mm")
+
+        # Draw 30° apex left-pointing triangle at the specified position
+        self._draw_triangle(draw, x + len(bottom_line) * font_size * 0.35 if bottom_line else x,
+                            y_bottom, font_size * 0.7, color)
+
+    def _draw_triangle(self, draw, cx, cy, size, color):
+        """Draw a left-pointing isosceles triangle with 30° apex angle.
+
+        Apex at left (cx, cy), pointing left. Base angles are 75°.
+        """
+        import math
+        # 30° apex → half-angle = 15°
+        half_angle_rad = math.radians(15)
+        # Triangle width (from tip to base center)
+        tri_w = size * math.cos(half_angle_rad)
+        # Half height of base
+        tri_h = size * math.sin(half_angle_rad)
+
+        # Points: tip (left), top-right, bottom-right
+        pts = [
+            (cx - tri_w, cy),           # tip (left)
+            (cx + tri_w * 0.1, cy - tri_h),   # top-right
+            (cx + tri_w * 0.1, cy + tri_h),   # bottom-right
+        ]
+        draw.polygon(pts, fill=color)
 
     # ------------------------------------------------------------------
     # Image processing

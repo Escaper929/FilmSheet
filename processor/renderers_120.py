@@ -77,17 +77,61 @@ class Renderer120(BaseRenderer):
         thumb_w = layout['thumb_w']
         total_w = layout['big_total_w']
         scale_factor = layout['scale_factor']
-        # Edge text 0.9mm from strip edge
-        border_mid = int(0.9 * scale_factor * aa_scale)
+        aa_scale = layout.get('aa_scale', 1)
+
+        edge_info = self.processor._generate_edge_text()
         font_size = int(14 * thumb_w / 400 * 0.85) * aa_scale
         font = self.processor._load_font(font_size)
         if not font:
             return
-        edge_text = self.processor._generate_edge_text()
-        draw.text((total_w // 2, y1 + border_mid), edge_text,
-                  fill=self.colors["text_color"], font=font, anchor="mm")
-        draw.text((total_w // 2, y2 - border_mid), edge_text,
-                  fill=self.colors["text_color"], font=font, anchor="mm")
+        color = self.colors["text_color"]
+
+        # --- Top edge: centered, brand + film type ---
+        border_mid = int(0.9 * scale_factor * aa_scale)
+        top_parts = [edge_info["brand"]]
+        if edge_info["film_type"]:
+            top_parts.append(edge_info["film_type"])
+        top_line = "  ".join(top_parts)
+        draw.text((total_w // 2, y1 + border_mid), top_line, fill=color, font=font, anchor="mm")
+
+        # --- Bottom edge: fixed at image centers + separator triangles ---
+        edge_y_bottom = y2 - border_mid
+
+        side_margin = layout['side_margin'] * aa_scale
+        spacing = layout['spacing'] * aa_scale
+        frame_w = thumb_w * aa_scale
+        cols = layout['cols']
+
+        start_col = 2 if row == 0 else 0
+        image_centers = []
+        cur_img = img_idx
+        for c in range(start_col, cols):
+            if cur_img >= len(self.images):
+                break
+            cx = side_margin + spacing + c * (frame_w + spacing) + frame_w // 2
+            image_centers.append((cx, cur_img + 1))
+            cur_img += 1
+
+        # Draw numbered text at each image center
+        for cx, num in image_centers:
+            num_str = str(num)
+            num_font = self.processor._load_font(font_size)
+            if num_font:
+                bbox = draw.textbbox((0, 0), num_str, font=num_font)
+                num_w = bbox[2] - bbox[0]
+                draw.text((cx - num_w // 2, edge_y_bottom), num_str, fill=color, font=num_font, anchor="mm")
+                # Triangle right after the number, proportional to number width
+                gap = 25
+                self.processor._draw_triangle(
+                    draw, cx - num_w // 2 + num_w + gap, edge_y_bottom, font_size * 0.7, color
+                )
+
+        # Draw separators between adjacent images
+        for i in range(len(image_centers) - 1):
+            sep_x = (image_centers[i][0] + image_centers[i + 1][0]) // 2
+            self.processor._draw_triangle(
+                draw, sep_x, edge_y_bottom, font_size * 0.6, color
+            )
 
     def _place_images_in_row(self, canvas, layout, row, y1, y2, img_idx, scale):
         """Place images for a 120 strip row."""

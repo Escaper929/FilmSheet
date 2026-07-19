@@ -79,8 +79,7 @@ class Renderer135(BaseRenderer):
         # Draw perforations
         self._draw_perforations(draw, layout, y1, y2, scale)
 
-        # Edge text
-        edge_text = self.processor._generate_edge_text()
+        edge_info = self.processor._generate_edge_text()
         font_size = int(14 * thumb_w / 400 * 0.85) * scale
         font = self.processor._load_font(font_size)
         if not font:
@@ -90,7 +89,7 @@ class Renderer135(BaseRenderer):
         margin = int(40 * base_scale) * scale
         offset_range = int(0.08 * total_w)
 
-        # Random edge text positions
+        # --- Top edge: random positions, brand + film type ---
         render_seed = int(time.time()) ^ (row * 7919 + img_idx)
         rng = random.Random(render_seed)
         num_occurrences = rng.choice([2, 3, 4])
@@ -110,14 +109,61 @@ class Renderer135(BaseRenderer):
             selected_x.append(x)
         selected_x.sort()
 
-        # Edge text 0.9mm from strip edge
         edge_y_offset = int(0.9 * layout['scale_factor']) * scale
         edge_y_top = y1 + edge_y_offset
-        edge_y_bottom = y2 - edge_y_offset
 
         for x_pos in selected_x:
-            draw.text((x_pos, edge_y_top), edge_text, fill=color, font=font, anchor="mm")
-            draw.text((x_pos, edge_y_bottom), edge_text, fill=color, font=font, anchor="mm")
+            top_parts = [edge_info["brand"]]
+            if edge_info["film_type"]:
+                top_parts.append(edge_info["film_type"])
+            top_line = "  ".join(top_parts)
+            draw.text((x_pos, edge_y_top), top_line, fill=color, font=font, anchor="mm")
+
+        # --- Bottom edge: fixed at image centers + separator triangles ---
+        edge_y_bottom = y2 - edge_y_offset
+
+        side_margin = layout['side_margin'] * scale
+        spacing = layout['spacing'] * scale
+        frame_w = layout['frame_w_px'] * scale
+        start_col = 2 if row == 0 else 0
+        cols = layout['cols']
+
+        # Collect image center X positions for this row
+        image_centers = []
+        col_idx = start_col
+        cur_img = img_idx
+        for c in range(start_col, cols):
+            if cur_img >= len(self.images):
+                break
+            cx = side_margin + spacing + c * (frame_w + spacing) + frame_w // 2
+            image_centers.append((cx, cur_img + 1))
+            cur_img += 1
+            col_idx += 1
+
+        # Draw numbered text at each image center
+        for cx, num in image_centers:
+            # Draw number centered, triangle to the right of it
+            num_str = str(num)
+            num_font = self.processor._load_font(font_size)
+            if num_font:
+                bbox = draw.textbbox((0, 0), num_str, font=num_font)
+                num_w = bbox[2] - bbox[0]
+                # Place number centered at cx
+                draw.text((cx - num_w // 2, edge_y_bottom), num_str, fill=color, font=num_font, anchor="mm")
+                # Triangle right after the number, proportional to number width
+                gap = 25
+                self.processor._draw_triangle(
+                    draw, cx - num_w // 2 + num_w + gap, edge_y_bottom, font_size * 0.7, color
+                )
+
+        # Draw separator triangles between adjacent images
+        for i in range(len(image_centers) - 1):
+            cx1, _ = image_centers[i]
+            cx2, _ = image_centers[i + 1]
+            sep_x = (cx1 + cx2) // 2
+            self.processor._draw_triangle(
+                draw, sep_x, edge_y_bottom, font_size * 0.6, color
+            )
 
     def _draw_perforations(self, draw, layout, y1, y2, scale):
         """Draw perforations along top and bottom of a strip."""
