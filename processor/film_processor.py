@@ -18,6 +18,14 @@ from utils.helpers import (
 )
 from .renderers_135 import Renderer135
 from .renderers_120 import Renderer120
+from .config_schema import validate_config, sanitize_config, COMPUTED_FIELDS
+from .filename_utils import generate_output_filename
+from .edge_text import generate_edge_text as _generate_edge_text_pure
+from .image_pipeline import (
+    process_135_image as _process_135_image,
+    process_120_image as _process_120_image,
+    cover_resize_crop as _cover_resize_crop,
+)
 
 class FilmProcessor:
     def __init__(self, config):
@@ -122,98 +130,11 @@ class FilmProcessor:
     def _generate_edge_text(self):
         """Build edge text from info_film field or use custom text.
 
-        Returns a dict with structured fields:
-            brand: str (e.g. "KODAK")
-            film_type: str (e.g. "Portra 400")
-            lot_code: str (e.g. "E0 3221")
-            direction: str ("\u25c0")
-            custom: bool
+        Delegates to the pure function for brand/type mapping.
         """
         custom = self.config.get('edge_text', '').strip()
-        if custom:
-            return {"brand": custom, "film_type": "", "lot_code": "", "direction": "", "custom": True}
-
         info_film = self.config.get('info_film', '').strip()
-        upper_film = info_film.upper()
-
-        # Cinema/motion picture keywords -> Eastman (full-text match first)
-        cinema_keywords = ['VISION3', 'CINEVISION', 'EKTACHROME', 'MOTION PICTURE',
-                           '5207', '5219', '5294', '5203', '5222']
-        if any(kw in upper_film for kw in cinema_keywords):
-            brand = "EASTMAN"
-            # Strip brand prefix from film_type to avoid duplication
-            parts = info_film.split()
-            raw_brand = parts[0] if parts else ""
-            # Remove Chinese brand prefix
-            brand_prefixes = ['柯达', 'Kodak', 'KODAK', '富士', 'FUJIFILM']
-            stripped = info_film
-            for bp in brand_prefixes:
-                if stripped.startswith(bp):
-                    stripped = stripped[len(bp):].strip()
-                    break
-            film_type = stripped
-        else:
-            parts = info_film.split()
-            raw_brand = parts[0] if parts else ""
-            raw_film_type = ' '.join(parts[1:]) if len(parts) > 1 else ""
-
-            # Chinese brand -> English mapping
-            brand_map = {
-                '柯达': 'KODAK', 'Kodak': 'KODAK', 'KODAK': 'KODAK',
-                '富士': 'FUJIFILM', 'Fujifilm': 'FUJIFILM', 'FUJIFILM': 'FUJIFILM',
-                '柯尼卡': 'KONICA', 'Konica': 'KONICA', 'KONICA': 'KONICA',
-                '伊尔福': 'ILFORD', 'Ilford': 'ILFORD', 'ILFORD': 'ILFORD',
-                '阿克发': 'AGFA', 'Agfa': 'AGFA', 'AGFA': 'AGFA',
-                '乐凯': 'LUCKY', 'Lucky': 'LUCKY', 'LUCKY': 'LUCKY',
-                '波尔': 'PORST', 'Porst': 'PORST', 'PORST': 'PORST',
-                '斯达法': 'STADIA', 'Stadia': 'STADIA', 'STADIA': 'STADIA',
-                '哈苏': 'HASSELBLAD', 'Hasselblad': 'HASSELBLAD',
-            }
-            brand = brand_map.get(raw_brand, raw_brand.upper())
-
-            # Chinese film type -> English mapping (partial match)
-            type_map = {
-                'Portra 160': 'Portra 160', 'Portra 160nc': 'Portra 160NC',
-                'Portra 400': 'Portra 400', 'Portra 400nc': 'Portra 400NC',
-                'Portra 800': 'Portra 800',
-                'Ektar 100': 'Ektar 100',
-                'Gold 200': 'Gold 200', 'Ultramax 200': 'Ultramax 200',
-                'Ultramax 400': 'Ultramax 400', 'Supra 200': 'Supra 200',
-                'Supra 400': 'Supra 400',
-                'ColorPlus 200': 'ColorPlus 200',
-                'Tri-X 400': 'Tri-X 400', 'T-Max 100': 'T-Max 100',
-                'T-Max 400': 'T-Max 400', 'Panatomic-X': 'Panatomic-X',
-                'Pro 400H': 'Pro 400H',
-                'Velvia 50': 'Velvia 50', 'Provia 100F': 'Provia 100F',
-                'Astia 100F': 'Astia 100F', 'Eterna 500T': 'Eterna 500T',
-                'Vision3 500T': 'Vision3 500T', 'Vision3 250D': 'Vision3 250D',
-                'Vision3 50D': 'Vision3 50D',
-                'Superia 200': 'Superia 200', 'Superia 400': 'Superia 400',
-                'Superia 800': 'Superia 800',
-                'CineVision 500T': 'CineVision 500T',
-                '5207': '5207', '5219': '5219', '5294': '5294', '5203': '5203',
-                '5222': '5222',
-                '横轴': '横轴', '纵轴': '纵轴',
-            }
-            film_type = raw_film_type
-            for cn, en in type_map.items():
-                if cn in raw_film_type:
-                    film_type = en
-                    break
-            if not film_type:
-                film_type = raw_film_type
-
-        # Generate a consistent lot code from brand + film_type
-        lot_hash = hash(brand + film_type) & 0xFFFFFF
-        lot_code = f"E{lot_hash // 10000 % 10} {lot_hash % 10000:04d}"
-
-        return {
-            "brand": brand,
-            "film_type": film_type,
-            "lot_code": lot_code,
-            "direction": "\u25c0",
-            "custom": False,
-        }
+        return _generate_edge_text_pure(info_film, custom)
 
     def _draw_edge_text_on_strip(self, draw, edge_info, font, color, x, y_top, y_bottom, img_num=None):
         """Draw structured edge text on a film strip (top and bottom margins).
@@ -278,113 +199,67 @@ class FilmProcessor:
         self.is_cancelled = True
 
     def crop_to_135_ratio(self, img):
-        w, h = img.size
-        target_ratio = 36.0 / 24.0
-        if w / h > target_ratio:
-            new_w = int(h * target_ratio)
-            left = (w - new_w) // 2
-            return img.crop((left, 0, left + new_w, h))
-        else:
-            new_h = int(w / target_ratio)
-            top = (h - new_h) // 2
-            return img.crop((0, top, w, top + new_h))
+        """Delegate to image_pipeline for future portability."""
+        from .image_pipeline import _crop_to_135_ratio as _crop
+        return _crop(img)
 
     def cover_resize_crop(self, img, target_w, target_h):
-        img_w, img_h = img.size
-        if img_w == 0 or img_h == 0:
-            return img
-        scale = max(target_w / img_w, target_h / img_h)
-        new_w = int(round(img_w * scale))
-        new_h = int(round(img_h * scale))
-        if scale != 1:
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        left = (new_w - target_w) // 2
-        top = (new_h - target_h) // 2
-        img = img.crop((left, top, left + target_w, top + target_h))
-        return img
+        """Delegate to image_pipeline for future portability."""
+        return _cover_resize_crop(img, target_w, target_h)
 
     def process_single_image(self, filepath, thumb_width):
-        try:
-            img = Image.open(filepath)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            if self.config.get('processing_mode') == 'negative':
-                img = ImageOps.invert(img)
-            w, h = img.size
-            if self.config.get('force_landscape', True) and h > w:
-                img = img.rotate(-90, expand=True)
-            img = self.crop_to_135_ratio(img)
-            target_h = int(thumb_width * 24.0 / 36.0)
-            img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
-            return img
-        except Exception:
-            return None
+        """Delegate to image_pipeline for future portability."""
+        return _process_135_image(
+            filepath, thumb_width,
+            self.config.get('processing_mode', 'positive'),
+            self.config.get('force_landscape', True)
+        )
 
     def _process_120_image(self, filepath, target_ratio, thumb_width):
-        try:
-            img = Image.open(filepath)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            if self.config.get('processing_mode') == 'negative':
-                img = ImageOps.invert(img)
-            w, h = img.size
-            if self.config['force_landscape'] and h > w:
-                img = img.rotate(-90, expand=True)
-                w, h = img.size
-            current_ratio = w / h
-            if current_ratio > target_ratio:
-                new_w = int(h * target_ratio)
-                left = (w - new_w) // 2
-                img = img.crop((left, 0, left + new_w, h))
-            else:
-                new_h = int(w / target_ratio)
-                top = (h - new_h) // 2
-                img = img.crop((0, top, w, top + new_h))
-            target_h = int(thumb_width / target_ratio)
-            img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
-            return img
-        except Exception:
-            return None
+        """Delegate to image_pipeline for future portability."""
+        return _process_120_image(
+            filepath, target_ratio, thumb_width,
+            self.config.get('processing_mode', 'positive'),
+            self.config.get('force_landscape', True)
+        )
 
     def run(self, status_callback, progress_callback):
-        # ---- 自动生成输出文件名（仅当用户未自定义时） ----
-        output_file = self.config.get('output_file', 'filmsheet_output.jpg')
-        default_names = ['filmsheet_output.jpg', 'filmsheet_output.png', 'filmsheet_output.jpeg']
-        if output_file in default_names:
-            roll = self.config.get('info_roll', '').strip()
-            camera = self.config.get('info_camera', '').strip()
-            film = self.config.get('info_film', '').strip()
-            shoot_date = self.config.get('info_shoot_date', '').strip()
-            parts = [p for p in [roll, camera, film, shoot_date] if p]
-            if parts:
-                name = '_'.join(parts)
-                name = re.sub(r'[\\/*?:"<>|]', '_', name)
-                old_path = self.config['output_path']
-                dirname = os.path.dirname(old_path)
-                if not dirname:
-                    dirname = os.getcwd()
-                ext = os.path.splitext(old_path)[1]
-                if not ext:
-                    ext = '.jpg'
-                new_path = os.path.join(dirname, name + ext)
-                self.config['output_path'] = new_path
+        # Validate and sanitize config
+        is_valid, errors = validate_config(self.config)
+        if not is_valid:
+            return f"配置错误: {'; '.join(errors)}"
+
+        sanitized = sanitize_config(self.config)
+        config = dict(sanitized)
+        config.update(self.config)  # Preserve user-set values
+
+        # Generate output filename
+        config['output_path'] = generate_output_filename(
+            config.get('output_file', 'filmsheet_output.jpg'),
+            config.get('info_roll', ''),
+            config.get('info_camera', ''),
+            config.get('info_film', ''),
+            config.get('info_shoot_date', ''),
+            os.path.dirname(config.get('output_path', '.')),
+        )
 
         try:
             files = sorted([
-                os.path.join(self.config['input_folder'], f)
-                for f in os.listdir(self.config['input_folder'])
+                os.path.join(config['input_folder'], f)
+                for f in os.listdir(config['input_folder'])
                 if f.lower().endswith(SUPPORTED_FORMATS)
             ])
             if not files:
                 return "错误：文件夹中没有图片。"
 
-            is_120 = (self.config['film_format'] == "120")
-            batch_enabled = self.config.get('batch_export_enabled', False)
+            is_120 = (config['film_format'] == "120")
+            batch_enabled = config.get('batch_export_enabled', False)
 
             # ---- 图片预处理（只做一次） ----
             processed_imgs = self._process_images(files, is_120, total_files=len(files),
-                                                   status_callback=status_callback,
-                                                   progress_callback=progress_callback)
+                                                  config=config,
+                                                  status_callback=status_callback,
+                                                  progress_callback=progress_callback)
             if processed_imgs is None:
                 return "已取消"
             if not processed_imgs:
@@ -392,31 +267,26 @@ class FilmProcessor:
 
             # ---- 渲染 ----
             if batch_enabled:
-                # Render all styles
                 styles = list(STYLE_COLORS.keys())
             else:
-                styles = [self.config.get('render_style', 'lightbox')]
+                styles = [config.get('render_style', 'lightbox')]
 
             results = []
             for style_idx, style in enumerate(styles):
                 if self.is_cancelled:
                     return "已取消"
 
-                batch_config = dict(self.config)
+                batch_config = dict(config)
                 batch_config['render_style'] = style
 
-                # Adjust output path with style suffix
                 out_path = batch_config['output_path']
                 name, ext = os.path.splitext(out_path)
                 batch_config['output_path'] = f"{name}_{style}{ext}"
 
-                # Create a processor with modified config
                 batch_proc = FilmProcessor(batch_config)
-                # Copy images and state
                 batch_proc.images = processed_imgs if hasattr(self, 'images') else []
                 batch_proc.is_cancelled = self.is_cancelled
 
-                # Adjust progress range for batch
                 if batch_enabled and len(styles) > 1:
                     start_pct = 50 + style_idx * (50 // len(styles))
                     end_pct = 50 + (style_idx + 1) * (50 // len(styles))
@@ -435,7 +305,6 @@ class FilmProcessor:
 
                 results.append(result)
 
-            # Return combined result
             if all(r == "success" for r in results):
                 return "success"
             elif "已取消" in results:
@@ -446,18 +315,24 @@ class FilmProcessor:
         except Exception as e:
             return f"错误: {str(e)}"
 
-    def _process_images(self, files, is_120, total_files, status_callback, progress_callback):
+    def _process_images(self, files, is_120, total_files, config, status_callback, progress_callback):
         """Process images (crop/resize) and return list of PIL Images."""
+        cfg = config
         if is_120:
-            target_ratio = FILM_FORMAT_RATIOS.get(self.config['sub_format'], 1.0)
-            thumb_w = self.config['thumb_width']
+            target_ratio = FILM_FORMAT_RATIOS.get(cfg.get('sub_format', '66'), 1.0)
+            thumb_w = cfg['thumb_width']
+            processing_mode = cfg.get('processing_mode', 'positive')
+            force_landscape = cfg.get('force_landscape', True)
             status_callback("正在处理图片...")
             cpu_count = os.cpu_count() or 4
             max_workers = max(4, cpu_count)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_file = {}
                 for f in files:
-                    future = executor.submit(self._process_120_image, f, target_ratio, thumb_w)
+                    future = executor.submit(
+                        _process_120_image, f, target_ratio, thumb_w,
+                        processing_mode, force_landscape
+                    )
                     future_to_file[future] = f
                 imgs = []
                 for i, future in enumerate(as_completed(future_to_file)):
@@ -469,13 +344,15 @@ class FilmProcessor:
                     progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
             return imgs
         else:
-            thumb_w = self.config['thumb_width']
+            thumb_w = cfg['thumb_width']
+            processing_mode = cfg.get('processing_mode', 'positive')
+            force_landscape = cfg.get('force_landscape', True)
             status_callback("正在处理图片...")
             cpu_count = os.cpu_count() or 4
             max_workers = max(4, cpu_count)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_file = {
-                    executor.submit(self.process_single_image, f, thumb_w): f
+                    executor.submit(_process_135_image, f, thumb_w, processing_mode, force_landscape): f
                     for f in files
                 }
                 imgs = []
