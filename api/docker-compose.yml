@@ -2,18 +2,7 @@ version: "3"
 
 services:
   filmsheet:
-    image: python:3.11-slim
+    build: .
     ports:
       - "8000:8000"
-    command: >
-      sh -c "
-        apt-get update && apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra git &&
-        if [ -d /filmsheet/.git ]; then
-          cd /filmsheet && git pull || true
-        else
-          git clone https://github.com/Escaper929/FilmSheet.git /filmsheet || true
-        fi &&
-        pip install fastapi uvicorn pillow python-multipart &&
-        cd /filmsheet/api && uvicorn main:app --host 0.0.0.0 --port 8000
-      "
     restart: unless-stopped

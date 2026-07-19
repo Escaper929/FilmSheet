@@ -1,20 +1,22 @@
 FROM python:3.11-slim
 
-WORKDIR /app
-
-# Install system deps
+# Install fonts and git (for potential future pulls)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk fonts-noto-cjk-extra \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
+# Copy all project files directly into the image
 COPY processor/ ./processor/
 COPY engine/ ./engine/
 COPY utils/ ./utils/
-COPY api/ ./api/
+COPY api/requirements.txt ./api/requirements.txt
+COPY api/main.py ./api/main.py
+COPY api/index.html ./api/index.html
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r api/requirements.txt
 
 EXPOSE 8000
 
