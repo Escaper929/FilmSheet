@@ -136,39 +136,8 @@ class FilmProcessor:
         info_film = self.config.get('info_film', '').strip()
         return _generate_edge_text_pure(info_film, custom)
 
-    def _draw_edge_text_on_strip(self, draw, edge_info, font, color, x, y_top, y_bottom, img_num=None):
-        """Draw structured edge text on a film strip (top and bottom margins).
-
-        Real Kodak/Fujifilm edge text layout:
-          Top:    BRAND  FILM_TYPE
-          Bottom: IMG_NUM  ◃ (narrow triangle pointing left)
-        """
-        if edge_info.get("custom"):
-            draw.text((x, y_top), edge_info["brand"], fill=color, font=font, anchor="mm")
-            draw.text((x, y_bottom), edge_info["brand"], fill=color, font=font, anchor="mm")
-            return
-
-        brand = edge_info["brand"]
-        film_type = edge_info["film_type"]
-
-        # Top edge: "BRAND  FILM_TYPE"
-        top_parts = [brand]
-        if film_type:
-            top_parts.append(film_type)
-        top_line = "  ".join(top_parts)
-
-        # Bottom edge: sequential number + narrow triangle
-        if img_num is not None:
-            bottom_line = f"{img_num}"
-        else:
-            bottom_line = ""
-
-        draw.text((x, y_top), top_line, fill=color, font=font, anchor="mm")
-        draw.text((x, y_bottom), bottom_line, fill=color, font=font, anchor="mm")
-
-        # Draw 30° apex left-pointing triangle at the specified position
-        self._draw_triangle(draw, x + len(bottom_line) * font_size * 0.35 if bottom_line else x,
-                            y_bottom, font_size * 0.7, color)
+    # _draw_edge_text_on_strip removed: dead code (never called, referenced undefined `font_size`).
+    # Edge text is drawn directly in renderers_135.py / renderers_120.py draw_strip_decoration().
 
     def _draw_triangle(self, draw, cx, cy, size, color):
         """Draw a left-pointing isosceles triangle with 30° apex angle.

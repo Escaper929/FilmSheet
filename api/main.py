@@ -465,6 +465,256 @@ def _render_135_api(
 
 
 # ---------------------------------------------------------------------------
+# Render 120 (API-only, no file I/O)
+# ---------------------------------------------------------------------------
+
+# 120 sub-format image widths in mm (height is always 56mm, backing paper 61mm)
+_120_IMAGE_WIDTHS_MM = {
+    "645": 41.5,
+    "66":  56.0,
+    "67":  67.0,
+    "68":  34.5,
+    "69":  41.5,
+    "612": 24.0,
+    "617": 15.2,
+}
+
+_BACKING_WIDTH_MM = 61.0
+_IMAGE_HEIGHT_MM = 56.0
+_IMAGE_BORDER_MM = (_BACKING_WIDTH_MM - _IMAGE_HEIGHT_MM) / 2  # 2.5mm each
+
+
+def _render_120_api(
+    images: list[Image.Image],
+    config: dict,
+    is_preview: bool = False,
+) -> Image.Image:
+    """Render a 120 film sheet and return PIL Image (no file I/O).
+
+    120 strips have no perforations — only edge text and image borders.
+    """
+    cols = config["columns"]
+    rows = math.ceil(len(images) / cols)
+    thumb_w = config["thumb_width"]
+    spacing = int(config.get("spacing", 20) * thumb_w / 400)
+
+    aa_scale = 4 if not is_preview else 1
+
+    sub_format = config.get("sub_format", "66")
+    img_w_mm = _120_IMAGE_WIDTHS_MM.get(sub_format, 56.0)
+    scale_factor = thumb_w / img_w_mm
+    strip_h = int(_BACKING_WIDTH_MM * scale_factor)
+    img_h = int(_IMAGE_HEIGHT_MM * scale_factor)
+    image_border = int(_IMAGE_BORDER_MM * scale_factor)
+    bag_gap = int(50 * scale_factor)
+
+    base_scale = thumb_w / 400.0
+    side_margin = int(50 * base_scale)
+    top_margin = int(25 * base_scale)
+    content_w = (cols * thumb_w) + ((cols + 1) * spacing)
+    total_w = content_w + (side_margin * 2) + int(100 * base_scale)
+
+    # Pack image
+    pack_img_path = config.get("pack_image", "")
+    pack_img = None
+    if pack_img_path and os.path.exists(pack_img_path):
+        try:
+            pack_img = Image.open(pack_img_path).convert("RGB")
+        except Exception:
+            pass
+
+    has_pack_stroke = config.get("pack_border_stroke", True)
+    pack_border = max(2, int(2 * base_scale)) if has_pack_stroke else 0
+    pack_gap = int(20 * base_scale)
+
+    # Info
+    has_info = any(
+        v for row in INFO_LAYOUT
+        for k in row if k and (v := config.get(f"info_{k}", ""))
+    )
+    lang = config.get("info_lang", "en")
+    label_idx = 0 if lang == "zh" else 1
+    info_data = {key: config.get(f"info_{key}", "") for key in LABEL_MAP}
+    active_rows = sum(1 for row in INFO_LAYOUT if any(info_data.get(k, "") for k in row if k))
+    info_font_size = int(34 * base_scale)
+    info_line_height = int(52 * base_scale)
+    info_top_padding = int(20 * base_scale)
+    info_bottom_padding = int(15 * base_scale)
+
+    pack_position = config.get("pack_position", "left")
+    pack_size_pct = config.get("pack_size", 80)
+    if isinstance(pack_size_pct, str):
+        try:
+            pack_size_pct = int(pack_size_pct)
+        except ValueError:
+            pack_size_pct = 80
+
+    info_height = 0
+    if has_info and active_rows > 0:
+        info_height = info_top_padding + active_rows * info_line_height + info_bottom_padding
+    if pack_img and info_height == 0:
+        info_height = int(140 * base_scale)
+
+    info_to_film_gap = int(65 * base_scale)
+    top_area_height = top_margin + info_height + info_to_film_gap
+    top_region_height = top_margin + info_height
+    bottom_margin = int(top_region_height * 2.0) if info_height == 0 else int(top_region_height * 1.6)
+    total_h = int(top_area_height + (rows * strip_h) + ((rows - 1) * bag_gap) + bottom_margin)
+
+    render_style = config.get("render_style", "lightbox")
+    colors = STYLE_COLORS.get(render_style, STYLE_COLORS["lightbox"])
+
+    big_total_w = total_w * aa_scale
+    big_total_h = total_h * aa_scale
+    big_canvas = Image.new("RGB", (big_total_w, big_total_h), colors["canvas_bg"])
+    big_draw = ImageDraw.Draw(big_canvas)
+
+    big_current_y = top_area_height * aa_scale
+    big_side_margin = side_margin * aa_scale
+    big_spacing = spacing * aa_scale
+    big_thumb_w = thumb_w * aa_scale
+    big_img_h = img_h * aa_scale
+    big_strip_h = strip_h * aa_scale
+    big_bag_gap = bag_gap * aa_scale
+    big_image_border = image_border * aa_scale
+
+    edge_font_sz = int(16 * base_scale) * aa_scale
+    info_font_sz = int(info_font_size * aa_scale)
+
+    # Pack image placement
+    big_text_area_left = big_side_margin
+    big_text_area_right = big_total_w - big_side_margin
+    if pack_img and info_height > 0:
+        orig_w, orig_h = pack_img.size
+        top_blank_height = top_margin + info_height + info_to_film_gap
+        pack_h_display = min(int(top_blank_height * pack_size_pct / 100.0), 100)
+        pack_w_display = int(pack_h_display * (orig_w / orig_h))
+        max_allow_w = int(total_w * 0.35)
+        if pack_w_display > max_allow_w:
+            pack_w_display = max_allow_w
+            pack_h_display = int(pack_w_display * (orig_h / orig_w))
+        if pack_w_display > 0 and pack_h_display > 0:
+            big_pack = pack_img.resize((pack_w_display * aa_scale, pack_h_display * aa_scale), Image.Resampling.LANCZOS)
+            pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
+            if pack_position == "left":
+                pack_x = big_side_margin
+                if has_pack_stroke:
+                    pb = pack_border * aa_scale
+                    big_draw.rectangle([pack_x - pb, pack_y - pb, pack_x + pack_w_display * aa_scale + pb, pack_y + pack_h_display * aa_scale + pb],
+                                       outline=colors["pack_border"], width=pb)
+                big_canvas.paste(big_pack, (pack_x, pack_y))
+                big_text_area_left = pack_x + pack_w_display * aa_scale + pack_gap * aa_scale
+            else:
+                pack_x = big_total_w - big_side_margin - pack_w_display * aa_scale
+                if has_pack_stroke:
+                    pb = pack_border * aa_scale
+                    big_draw.rectangle([pack_x - pb, pack_y - pb, pack_x + pack_w_display * aa_scale + pb, pack_y + pack_h_display * aa_scale + pb],
+                                       outline=colors["pack_border"], width=pb)
+                big_canvas.paste(big_pack, (pack_x, pack_y))
+                big_text_area_right = pack_x - pack_gap * aa_scale
+
+    # Info block
+    if has_info:
+        font_main = _load_font_cached(info_font_sz)
+        if font_main:
+            _draw_info_block_api(
+                big_draw, font_main, colors,
+                big_text_area_left, big_text_area_right,
+                top_margin * aa_scale, info_top_padding * aa_scale,
+                info_line_height * aa_scale, thumb_w, config
+            )
+
+    # Edge text info
+    edge_info = generate_edge_text(config.get("info_film", ""), config.get("edge_text", ""))
+
+    film_base = colors["film_base"]
+    border_mid = int(0.9 * scale_factor * aa_scale)
+
+    img_idx = 0
+    for row in range(rows):
+        y1 = int(big_current_y)
+        y2 = int(big_current_y + big_strip_h)
+        big_draw.rectangle([0, y1, big_total_w, y2], fill=film_base)
+
+        # Edge text — centered in the 2.5mm border area (no perforations for 120)
+        font = _load_font_cached(edge_font_sz)
+        if font:
+            color = colors["text_color"]
+            top_parts = [edge_info["brand"]]
+            if edge_info["film_type"]:
+                top_parts.append(edge_info["film_type"])
+            top_line = "  ".join(top_parts)
+            big_draw.text((big_total_w // 2, y1 + border_mid), top_line, fill=color, font=font, anchor="mm")
+
+            # Bottom edge: numbers + triangles at image centers
+            edge_y_bottom = y2 - border_mid
+            start_col = 2 if row == 0 else 0
+            image_centers = []
+            for c in range(start_col, cols):
+                if img_idx >= len(images):
+                    break
+                cx = big_side_margin + big_spacing + c * (big_thumb_w + big_spacing) + big_thumb_w // 2
+                image_centers.append((cx, img_idx + 1))
+                img_idx += 1
+
+            for cx, num in image_centers:
+                num_str = str(num)
+                bbox = big_draw.textbbox((0, 0), num_str, font=font)
+                num_w = bbox[2] - bbox[0]
+                big_draw.text((cx - num_w // 2, edge_y_bottom), num_str, fill=color, font=font, anchor="mm")
+                gap = 25 * aa_scale
+                _draw_triangle_api(big_draw, cx - num_w // 2 + num_w + gap, edge_y_bottom, edge_font_sz * 0.7, color)
+
+            # Separator triangles between adjacent images
+            for i in range(len(image_centers) - 1):
+                sep_x = (image_centers[i][0] + image_centers[i + 1][0]) // 2
+                _draw_triangle_api(big_draw, sep_x, edge_y_bottom, edge_font_sz * 0.6, color)
+        else:
+            # Advance img_idx even without font
+            start_col = 2 if row == 0 else 0
+            for c in range(start_col, cols):
+                if img_idx >= len(images):
+                    break
+                img_idx += 1
+
+        # Place images in this row
+        start_col = 2 if row == 0 else 0
+        row_img_idx = img_idx - cols + start_col  # recalculate from row start
+        for col in range(start_col, cols):
+            if row_img_idx >= len(images):
+                break
+            x_pos = big_side_margin + big_spacing + col * (big_thumb_w + big_spacing)
+            y_img_top = y1 + big_image_border
+            placed = cover_resize_crop(images[row_img_idx], big_thumb_w, big_img_h)
+            big_canvas.paste(placed, (int(x_pos), int(y_img_top)))
+            row_img_idx += 1
+
+        big_current_y += big_strip_h + big_bag_gap
+
+    # Downscale if AA
+    if not is_preview:
+        canvas = big_canvas.resize((total_w, total_h), Image.Resampling.LANCZOS)
+    else:
+        canvas = big_canvas
+
+    # Watermark
+    sig = config.get("signature", "").strip()
+    if sig:
+        wm_font = _load_font_cached(int(18 * base_scale))
+        if wm_font:
+            margin = int(30 * base_scale)
+            bbox = big_draw.textbbox((0, 0), sig, font=wm_font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            wx = total_w - margin - tw
+            wy = total_h - margin - th
+            big_draw.text((wx + 1, wy + 1), sig, fill=(0, 0, 0), font=wm_font, anchor="lt")
+            big_draw.text((wx, wy), sig, fill=colors.get("text_color", (255, 255, 255)), font=wm_font, anchor="lt")
+
+    return canvas
+
+
+# ---------------------------------------------------------------------------
 # API Endpoint
 # ---------------------------------------------------------------------------
 
@@ -498,6 +748,8 @@ async def render_film_sheet(
     perf_mode: str = Form("Auto", description="齿孔模式：Auto 自动 / KS 民用 / BH 电影"),
     signature: str = Form("", description="水印签名（右下角显示）"),
     is_preview: bool = Form(False, description="预览模式（关闭抗锯齿，加快渲染）"),
+    batch_export_enabled: bool = Form(False, description="批量导出（同时生成另一种风格）"),
+    pack_image_file: Optional[UploadFile] = Form(None, description="胶卷包装图片（可选）"),
 ):
     """Render a film sheet from uploaded images + config.
 
@@ -531,6 +783,7 @@ async def render_film_sheet(
         "pack_size": pack_size,
         "perf_mode": perf_mode,
         "signature": signature,
+        "batch_export_enabled": batch_export_enabled,
     }
 
     is_valid, errors = validate_config(config)
@@ -550,11 +803,20 @@ async def render_film_sheet(
     if not pil_images:
         return Response(content="没有可处理的图片", media_type="text/plain", status_code=400)
 
+    # Save pack image to temp file if provided
+    pack_img_path = pack_image_path  # from form field (filesystem path from desktop)
+    if pack_image_file and pack_image_file.filename:
+        tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
+        pack_img_path = os.path.join(tmp_dir, pack_image_file.filename)
+        with open(pack_img_path, "wb") as f:
+            f.write(await pack_image_file.read())
+        config["pack_image"] = pack_img_path
+
     # Route to renderer
     if film_format == "120":
-        return Response(content="120 模式暂不支持 API，敬请期待", media_type="text/plain", status_code=501)
-
-    canvas = _render_135_api(pil_images, config, is_preview=is_preview)
+        canvas = _render_120_api(pil_images, config, is_preview=is_preview)
+    else:
+        canvas = _render_135_api(pil_images, config, is_preview=is_preview)
 
     # Return as image
     buf = io.BytesIO()

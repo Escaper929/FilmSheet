@@ -449,6 +449,48 @@ body {
         <input class="form-input" id="info_dev_date" type="date">
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">冲洗方式</label>
+        <input class="form-input" id="info_proc" placeholder="如：C-41">
+      </div>
+      <div class="form-group">
+        <label class="form-label">冲洗地点</label>
+        <input class="form-input" id="info_lab" placeholder="如：东京实验室">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">扫描仪</label>
+        <input class="form-input" id="info_scanner" placeholder="如：Hasselblad X5">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">包装图（可选）</div>
+    <div class="upload-area" onclick="document.getElementById('packFileInput').click()" style="padding:16px 12px">
+      <div class="upload-icon" style="font-size:24px">📦</div>
+      <div class="upload-text" style="font-size:12px">点击选择胶卷包装图片</div>
+    </div>
+    <input type="file" id="packFileInput" accept="image/*" onchange="handlePackImage(this.files)" style="display:none">
+    <div id="packImagePreview" style="display:none;margin-top:8px;text-align:center">
+      <img id="packPreviewImg" style="max-height:80px;border-radius:8px">
+      <button onclick="clearPackImage()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:8px">清除</button>
+    </div>
+    <div class="slider-row">
+      <label>大小</label>
+      <input type="range" id="packSize" min="10" max="100" value="80" oninput="document.getElementById('packSizeVal').textContent=this.value+'%'">
+      <span class="val" id="packSizeVal">80%</span>
+    </div>
+    <div class="radio-group" id="packPositionGroup">
+      <div class="radio-btn active" data-value="left" onclick="selectRadio(this,'packPosition')">左侧</div>
+      <div class="radio-btn" data-value="right" onclick="selectRadio(this,'packPosition')">右侧</div>
+    </div>
+    <div class="toggle-row" style="margin-top:8px">
+      <span class="toggle-label">描边</span>
+      <div class="toggle-switch on" id="packStroke" onclick="toggleSwitch(this)"></div>
+    </div>
   </div>
 
   <button class="btn btn-primary" id="btnNext" onclick="switchTab('settings')">下一步 →</button>
@@ -503,6 +545,27 @@ body {
       <label>间距</label>
       <input type="range" id="spacing" min="0" max="50" value="20" oninput="updateSliderVal(this,'spVal')">
       <span class="val" id="spVal">20</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">齿孔模式</div>
+    <div class="radio-group" id="perfModeGroup">
+      <div class="radio-btn active" data-value="Auto" onclick="selectRadio(this,'perfMode')">自动</div>
+      <div class="radio-btn" data-value="KS (民用)" onclick="selectRadio(this,'perfMode')">KS 民用</div>
+      <div class="radio-btn" data-value="BH (电影)" onclick="selectRadio(this,'perfMode')">BH 电影</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">边字（可选）</div>
+    <input class="form-input" id="edgeText" placeholder="留空则从胶卷信息自动生成">
+  </div>
+
+  <div class="card">
+    <div class="toggle-row">
+      <span class="toggle-label">批量导出（同时生成另一种风格）</span>
+      <div class="toggle-switch" id="batchExport" onclick="toggleSwitch(this)"></div>
     </div>
   </div>
 
@@ -594,6 +657,7 @@ body {
 <script>
 // ===== State =====
 let uploadedImages = []; // [{file, url}]
+let packImageData = null; // {name, type, file}
 let config = {
   film_format: '135',
   sub_format: '标准 36×24',
@@ -606,6 +670,12 @@ let config = {
   output_format: 'JPG',
   quality: 95,
   signature: '',
+  perf_mode: 'Auto',
+  edge_text: '',
+  batch_export_enabled: false,
+  pack_position: 'left',
+  pack_size: 80,
+  pack_border_stroke: true,
 };
 
 const SUB_FORMATS = {
@@ -659,6 +729,10 @@ function selectRadio(el, group) {
     config.processing_mode = val;
   } else if (group === 'renderStyle') {
     config.render_style = val;
+  } else if (group === 'perfMode') {
+    config.perf_mode = val;
+  } else if (group === 'packPosition') {
+    config.pack_position = val;
   }
 }
 
@@ -687,7 +761,14 @@ function updateSubFormats() {
 // ===== Toggles =====
 function toggleSwitch(el) {
   el.classList.toggle('on');
-  config.force_landscape = el.classList.contains('on');
+  const id = el.id;
+  if (id === 'forceLandscape') {
+    config.force_landscape = el.classList.contains('on');
+  } else if (id === 'packStroke') {
+    config.pack_border_stroke = el.classList.contains('on');
+  } else if (id === 'batchExport') {
+    config.batch_export_enabled = el.classList.contains('on');
+  }
 }
 
 // ===== Sliders =====
@@ -725,6 +806,25 @@ function removeImage(i) {
   renderThumbs();
 }
 
+// ===== Pack Image =====
+function handlePackImage(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  packImageData = { name: file.name, type: file.type, file: file };
+  const url = URL.createObjectURL(file);
+  document.getElementById('packPreviewImg').src = url;
+  document.getElementById('packImagePreview').style.display = 'block';
+}
+
+function clearPackImage() {
+  if (packImageData) {
+    URL.revokeObjectURL(document.getElementById('packPreviewImg').src);
+    packImageData = null;
+  }
+  document.getElementById('packImagePreview').style.display = 'none';
+  document.getElementById('packFileInput').value = '';
+}
+
 // ===== Render =====
 async function render() {
   if (uploadedImages.length === 0) {
@@ -738,19 +838,19 @@ async function render() {
   config.info_film = document.getElementById('info_film').value.trim();
   config.info_shoot_date = document.getElementById('info_shoot_date').value;
   config.info_dev_date = document.getElementById('info_dev_date').value;
-  config.info_proc = '';
-  config.info_lab = '';
-  config.info_scanner = '';
+  config.info_proc = document.getElementById('info_proc').value.trim();
+  config.info_lab = document.getElementById('info_lab').value.trim();
+  config.info_scanner = document.getElementById('info_scanner').value.trim();
   config.info_lang = 'zh';
-  config.perf_mode = 'Auto';
-  config.edge_text = '';
-  config.pack_image_path = '';
-  config.pack_position = 'left';
-  config.pack_border_stroke = true;
-  config.pack_size = 80;
+  config.perf_mode = document.getElementById('perfModeGroup').querySelector('.active')?.dataset.value || 'Auto';
+  config.edge_text = document.getElementById('edgeText').value.trim();
+  config.pack_position = document.getElementById('packPositionGroup')?.querySelector('.active')?.dataset.value || 'left';
+  config.pack_size = parseInt(document.getElementById('packSize').value) || 80;
+  config.pack_border_stroke = document.getElementById('packStroke')?.classList.contains('on') ?? true;
   config.signature = document.getElementById('signature').value.trim();
   config.output_format = document.getElementById('outputFormat').value;
   config.quality = parseInt(document.getElementById('quality').value);
+  config.batch_export_enabled = document.getElementById('batchExport')?.classList.contains('on') ?? false;
 
   const btn = document.getElementById('btnRender');
   btn.disabled = true;
@@ -766,6 +866,11 @@ async function render() {
 
   const formData = new FormData();
   uploadedImages.forEach(img => formData.append('images', img.file));
+
+  // Pack image — send as separate file field
+  if (packImageData) {
+    formData.append('pack_image_file', packImageData.file);
+  }
 
   // Append config params
   Object.entries(config).forEach(([key, val]) => {
