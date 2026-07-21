@@ -80,7 +80,7 @@ class Renderer135(BaseRenderer):
         self._draw_perforations(draw, layout, y1, y2, scale)
 
         edge_info = self.processor._generate_edge_text()
-        font_size = int(16 * thumb_w / 400) * scale
+        font_size = int(16 * thumb_w / 400 * 0.85) * scale
         font = self.processor._load_font(font_size)
         if not font:
             return

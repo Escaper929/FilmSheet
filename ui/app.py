@@ -199,7 +199,7 @@ class App:
 
         # 第二行：缩略图宽 + 每行列数 + 自适应按钮 + 强制横向
         ttk.Label(param_frame, text="缩略图宽:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Spinbox(param_frame, from_=300, to=800, textvariable=self.vars['thumb_width'], width=6).grid(row=1, column=1, sticky=tk.W)
+        ttk.Spinbox(param_frame, from_=300, to=1600, textvariable=self.vars['thumb_width'], width=6).grid(row=1, column=1, sticky=tk.W)
         ttk.Label(param_frame, text="每行列数:").grid(row=1, column=2, sticky=tk.W, padx=(20,0))
         ttk.Spinbox(param_frame, from_=3, to=10, textvariable=self.vars['columns'], width=6).grid(row=1, column=3, sticky=tk.W)
         ttk.Button(param_frame, text="自适应画幅", command=self.auto_adjust_columns).grid(row=1, column=4, sticky=tk.W, padx=(10,0))

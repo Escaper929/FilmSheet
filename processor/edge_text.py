@@ -41,6 +41,7 @@ TYPE_MAP: dict[str, str] = {
     '5207': '5207', '5219': '5219', '5294': '5294', '5203': '5203',
     '5222': '5222',
     '横轴': '横轴', '纵轴': '纵轴',
+    'C200': 'C200', 'c200': 'C200',
 }
 
 # Cinema/motion picture keywords → Eastman brand
@@ -81,9 +82,26 @@ def generate_edge_text(info_film: str, custom_edge_text: str = "") -> dict:
         # Strip brand prefix to avoid duplication
         film_type = _strip_brand_prefix(raw)
     else:
+        # Extract brand: try exact split first, then prefix-match Chinese brands
         parts = raw.split()
         raw_brand = parts[0] if parts else ""
         raw_film_type = ' '.join(parts[1:]) if len(parts) > 1 else ""
+
+        # If split didn't separate brand from type (e.g. "乐凯C200"),
+        # try prefix matching against known Chinese brand names
+        if raw_brand not in BRAND_MAP:
+            matched_cn = False
+            for cn in BRAND_MAP:
+                if cn.isascii():
+                    continue  # skip Latin brand names
+                if raw_brand.startswith(cn):
+                    raw_brand = cn
+                    raw_film_type = raw_brand + raw_film_type  # reconstruct remainder
+                    raw_film_type = raw[len(cn):].strip()
+                    matched_cn = True
+                    break
+            if not matched_cn:
+                raw_film_type = raw
 
         brand = BRAND_MAP.get(raw_brand, raw_brand.upper())
         film_type = _map_film_type(raw_film_type)
@@ -110,7 +128,16 @@ def _strip_brand_prefix(text: str) -> str:
 
 
 def _map_film_type(raw: str) -> str:
-    """Map Chinese film type to English."""
+    """Map film type to English, preserving case-corrected variants from TYPE_MAP."""
+    # Try exact match first (case-sensitive)
+    if raw in TYPE_MAP:
+        return TYPE_MAP[raw]
+    # Try case-insensitive exact match
+    raw_lower = raw.lower()
+    for cn, en in TYPE_MAP.items():
+        if cn.lower() == raw_lower:
+            return en
+    # Try substring match (for multi-word types like 'Portra 400')
     for cn, en in TYPE_MAP.items():
         if cn in raw:
             return en

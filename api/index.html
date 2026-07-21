@@ -531,20 +531,50 @@ body {
 
   <div class="card">
     <div class="card-title">参数</div>
-    <div class="slider-row">
-      <label>缩略图宽</label>
-      <input type="range" id="thumbWidth" min="300" max="800" value="400" step="50" oninput="updateSliderVal(this,'thumbVal')">
-      <span class="val" id="thumbVal">400</span>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">缩略图宽</label>
+        <select id="thumbWidth" onchange="updateConfig()">
+          <option value="300">300</option>
+          <option value="400" selected>400</option>
+          <option value="500">500</option>
+          <option value="600">600</option>
+          <option value="800">800</option>
+          <option value="1000">1000</option>
+          <option value="1200">1200</option>
+          <option value="1600">1600</option>
+        </select>
+      </div>
     </div>
-    <div class="slider-row">
-      <label>每行列数</label>
-      <input type="range" id="columns" min="3" max="10" value="6" oninput="updateSliderVal(this,'colVal')">
-      <span class="val" id="colVal">6</span>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">每行列数</label>
+        <select id="columns" onchange="updateConfig()">
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6" selected>6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+        </select>
+      </div>
     </div>
-    <div class="slider-row">
-      <label>间距</label>
-      <input type="range" id="spacing" min="0" max="50" value="20" oninput="updateSliderVal(this,'spVal')">
-      <span class="val" id="spVal">20</span>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">间距</label>
+        <select id="spacing" onchange="updateConfig()">
+          <option value="0">0</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+          <option value="40">40</option>
+          <option value="50">50</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -751,8 +781,7 @@ function updateSubFormats() {
       // Auto-adjust columns
       const cols = SUB_FORMAT_COLS[f] || 6;
       config.columns = cols;
-      document.getElementById('columns').value = cols;
-      document.getElementById('colVal').textContent = cols;
+      document.getElementById('columns').value = String(cols);
     };
     group.appendChild(btn);
   });
@@ -771,11 +800,14 @@ function toggleSwitch(el) {
   }
 }
 
-// ===== Sliders =====
-function updateSliderVal(input, valId) {
-  document.getElementById(valId).textContent = input.value;
-  const key = input.id;
-  config[key] = parseInt(input.value);
+// ===== Select Change Handlers =====
+function updateConfig() {
+  const tw = document.getElementById('thumbWidth');
+  const cols = document.getElementById('columns');
+  const sp = document.getElementById('spacing');
+  config.thumb_width = parseInt(tw.value);
+  config.columns = parseInt(cols.value);
+  config.spacing = parseInt(sp.value);
 }
 
 // ===== File Upload =====

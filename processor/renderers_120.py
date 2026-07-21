@@ -80,14 +80,15 @@ class Renderer120(BaseRenderer):
         aa_scale = layout.get('aa_scale', 1)
 
         edge_info = self.processor._generate_edge_text()
-        font_size = int(16 * thumb_w / 400) * aa_scale
+        font_size = int(16 * thumb_w / 400 * 0.85) * aa_scale
         font = self.processor._load_font(font_size)
         if not font:
             return
         color = self.colors["text_color"]
 
         # --- Top edge: centered, brand + film type ---
-        border_mid = int(0.9 * scale_factor * aa_scale)
+        # Use image_border to keep text within the 2.5mm backing paper border
+        border_mid = int(IMAGE_BORDER_TOP_BOTTOM_MM * scale_factor * 0.6 * aa_scale)
         top_parts = [edge_info["brand"]]
         if edge_info["film_type"]:
             top_parts.append(edge_info["film_type"])
@@ -102,7 +103,7 @@ class Renderer120(BaseRenderer):
         frame_w = thumb_w * aa_scale
         cols = layout['cols']
 
-        start_col = 2 if row == 0 else 0
+        start_col = 0
         image_centers = []
         cur_img = img_idx
         for c in range(start_col, cols):
@@ -141,7 +142,7 @@ class Renderer120(BaseRenderer):
         img_h = layout['img_h'] * scale
         image_border = layout['image_border'] * scale
 
-        start_col = 2 if row == 0 else 0
+        start_col = 0
         for col in range(start_col, layout['cols']):
             if img_idx >= len(self.images):
                 break
