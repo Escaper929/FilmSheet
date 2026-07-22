@@ -192,6 +192,25 @@ class FilmProcessor:
             self.config.get('force_landscape', True)
         )
 
+    def _resolve_image_list(self):
+        """Return (file_list, error_msg) from either single_image_path or input_folder."""
+        # Only use single_image_path if single_photo_mode is explicitly enabled
+        if self.config.get('single_photo_mode', False):
+            single = self.config.get('single_image_path', '')
+            if single and os.path.isfile(single):
+                return [single], None
+        folder = self.config.get('input_folder', '')
+        if not folder or not os.path.isdir(folder):
+            return [], "请输入有效的图片来源！"
+        files = sorted([
+            os.path.join(folder, f)
+            for f in os.listdir(folder)
+            if f.lower().endswith(SUPPORTED_FORMATS)
+        ])
+        if not files:
+            return [], "文件夹中没有图片。"
+        return files, None
+
     def run(self, status_callback, progress_callback):
         # Validate and sanitize config
         is_valid, errors = validate_config(self.config)
@@ -218,17 +237,18 @@ class FilmProcessor:
             if '/' in new_path or os.sep in new_path or os.path.dirname(new_path):
                 config['output_path'] = new_path
 
-        try:
-            files = sorted([
-                os.path.join(config['input_folder'], f)
-                for f in os.listdir(config['input_folder'])
-                if f.lower().endswith(SUPPORTED_FORMATS)
-            ])
-            if not files:
-                return "错误：文件夹中没有图片。"
+        files, err = self._resolve_image_list()
+        if err:
+            return f"错误：{err}"
 
+        try:
             is_120 = (config['film_format'] == "120")
             batch_enabled = config.get('batch_export_enabled', False)
+
+            # Single-photo mode: compress layout to one column so canvas
+            # is only as wide as the frame itself
+            if len(files) == 1 and config.get('single_photo_mode', False):
+                config['columns'] = 1
 
             # ---- 图片预处理（只做一次） ----
             processed_imgs = self._process_images(files, is_120, total_files=len(files),
@@ -352,13 +372,9 @@ class FilmProcessor:
     def render_preview(self):
         """快速预览渲染，不保存文件，返回 PIL Image 对象。"""
         try:
-            files = sorted([
-                os.path.join(self.config['input_folder'], f)
-                for f in os.listdir(self.config['input_folder'])
-                if f.lower().endswith(SUPPORTED_FORMATS)
-            ])
-            if not files:
-                return None, "文件夹中没有图片"
+            files, err = self._resolve_image_list()
+            if err:
+                return None, err
 
             is_120 = (self.config['film_format'] == "120")
 

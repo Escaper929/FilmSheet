@@ -49,6 +49,9 @@ class App:
             'current_template': tk.StringVar(value=cfg.get("current_template", "")),
         }
 
+        self.vars['single_photo_mode'] = tk.BooleanVar(value=False)
+        self.vars['single_image_path'] = tk.StringVar()
+
         for key in LABEL_MAP:
             self.vars[f'info_{key}'] = tk.StringVar()
 
@@ -326,6 +329,10 @@ class App:
         self.batch_cb = ttk.Checkbutton(out_frame, text="同时生成接触印相版", variable=self.vars['batch_export_enabled'])
         self.batch_cb.grid(row=0, column=5, sticky=tk.W, padx=(20,0))
 
+        # Single photo export checkbox
+        self.single_photo_cb = ttk.Checkbutton(out_frame, text="单张照片导出", variable=self.vars['single_photo_mode'])
+        self.single_photo_cb.grid(row=0, column=4, sticky=tk.W, padx=(10,0))
+
         # ---- 控制按钮 ----
         ctrl_frame = ttk.Frame(main_frame)
         ctrl_frame.grid(row=8, column=0, columnspan=4, pady=15)
@@ -523,16 +530,35 @@ class App:
             self.q_val.grid(row=0, column=4, sticky=tk.W)
 
     def browse_input(self):
-        folder = filedialog.askdirectory()
-        if folder:
-            self.vars['input_folder'].set(folder)
+        if self.vars['single_photo_mode'].get():
+            f = filedialog.askopenfilename(
+                filetypes=[("图片文件", "*.jpg *.jpeg *.png *.tiff *.bmp")]
+            )
+            if f:
+                self.vars['single_image_path'].set(f)
+                self.vars['input_folder'].set(os.path.dirname(f))
+                base = os.path.splitext(os.path.basename(f))[0]
+                ext = os.path.splitext(f)[1] or '.jpg'
+                self.vars['output_file'].set(base + '_filmsheet' + ext)
+        else:
+            folder = filedialog.askdirectory()
+            if folder:
+                self.vars['input_folder'].set(folder)
 
     def preview_process(self):
         """在临时窗口中快速预览渲染效果。"""
-        input_dir = self.vars['input_folder'].get()
-        if not input_dir or not os.path.isdir(input_dir):
-            messagebox.showwarning("提示", "请先选择图片来源文件夹！")
-            return
+        single_mode = self.vars['single_photo_mode'].get()
+        if not single_mode:
+            input_dir = self.vars['input_folder'].get()
+            if not input_dir or not os.path.isdir(input_dir):
+                messagebox.showwarning("提示", "请先选择图片来源文件夹！")
+                return
+        else:
+            sf = self.vars['single_image_path'].get()
+            if not sf or not os.path.isfile(sf):
+                messagebox.showwarning("提示", "请先选择要导出的照片！")
+                return
+            input_dir = os.path.dirname(sf)
 
         self.status_lbl.config(text="正在预览...", foreground="gray")
         self.root.update()
@@ -599,10 +625,18 @@ class App:
         self.status_lbl.config(text="预览完成", foreground="green")
 
     def start_process(self):
-        input_dir = self.vars['input_folder'].get()
-        if not input_dir or not os.path.isdir(input_dir):
-            messagebox.showerror("Error", "请选择有效的图片来源文件夹！")
-            return
+        single_mode = self.vars['single_photo_mode'].get()
+        if not single_mode:
+            input_dir = self.vars['input_folder'].get()
+            if not input_dir or not os.path.isdir(input_dir):
+                messagebox.showerror("Error", "请选择有效的图片来源文件夹！")
+                return
+        else:
+            single_file = self.vars['single_image_path'].get()
+            if not single_file or not os.path.isfile(single_file):
+                messagebox.showerror("Error", "请选择要导出的单张照片！")
+                return
+            self.vars['input_folder'].set(os.path.dirname(single_file))
 
         output_name = self.vars['output_file'].get()
         if not output_name.lower().endswith(('.png', '.jpg', '.jpeg')):
