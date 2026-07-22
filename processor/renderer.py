@@ -257,6 +257,7 @@ class BaseRenderer:
         pack_border = max(2, int(2 * base_scale)) if has_pack_stroke else 0
 
         draw = layout.get('draw')
+        # Track pack bounds for text area clamping
         if pack_position == 'left':
             pack_x = side_margin * aa_scale
             if has_pack_stroke:
@@ -267,6 +268,8 @@ class BaseRenderer:
                     pack_y + pack_h_display * aa_scale + pb
                 ], outline=self.colors["pack_border"], width=pb)
             canvas.paste(pack_resized, (pack_x, pack_y))
+            # Right edge of pack (+ gap), aa-scale coords — stored for _draw_info_block
+            layout['_pi_right'] = pack_x + pack_w_display * aa_scale + int(12 * aa_scale)
         else:
             pack_x = (total_w * aa_scale) - side_margin * aa_scale - pack_w_display * aa_scale
             if has_pack_stroke:
@@ -277,6 +280,8 @@ class BaseRenderer:
                     pack_y + pack_h_display * aa_scale + pb
                 ], outline=self.colors["pack_border"], width=pb)
             canvas.paste(pack_resized, (pack_x, pack_y))
+            # Left edge of pack (- gap), aa-scale coords — stored for _draw_info_block
+            layout['_pi_left'] = pack_x - int(12 * aa_scale)
 
     # -- Info block --------------------------------------------------
 
@@ -297,9 +302,19 @@ class BaseRenderer:
         if not font_main:
             return
 
+        # Clamp text area to avoid overlapping with pack image
+        text_left = side_margin
+        text_right = total_w - side_margin
+        pi_right = layout.get('_pi_right')   # pack on left → clamp text start
+        pi_left = layout.get('_pi_left')     # pack on right → clamp text end
+        if pi_right is not None:
+            text_left = max(text_left, pi_right)
+        if pi_left is not None:
+            text_right = min(text_right, pi_left)
+
         self.processor._draw_info_block(
             draw, font_main, self.colors,
-            side_margin, total_w - side_margin,
+            text_left, text_right,
             layout['top_margin'] * aa_scale,
             int(20 * thumb_w / 400) * aa_scale,
             int(52 * thumb_w / 400) * aa_scale,

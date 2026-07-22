@@ -125,7 +125,9 @@ class Renderer135(BaseRenderer):
         side_margin = layout['side_margin'] * scale
         spacing = layout['spacing'] * scale
         frame_w = layout['frame_w_px'] * scale
-        start_col = 2 if row == 0 else 0
+        # Head margin: skip ~2 frames on the first row (film lead-head simulation).
+        # Single-column layout must not skip — otherwise range(2, 1) is empty.
+        start_col = 2 if row == 0 and layout['cols'] > 1 else 0
         cols = layout['cols']
 
         # Collect image center X positions for this row
@@ -212,16 +214,28 @@ class Renderer135(BaseRenderer):
         frame_top_offset = layout['frame_top_offset_px'] * scale
         thumb_w = layout['thumb_w'] * scale
 
-        start_col = 2 if row == 0 else 0
-        for col in range(start_col, layout['cols']):
-            if img_idx >= len(self.images):
-                break
-            x_pos = side_margin + spacing + col * (frame_w + spacing)
+        # In single-photo mode, center the image on the film strip rather than
+        # placing it at the left edge.
+        cols = layout['cols']
+        if cols == 1:
+            total_w = layout['big_total_w']
+            x_pos = int((total_w - frame_w) / 2)
             y_img_top = y1 + frame_top_offset
             placed_img = self.processor.cover_resize_crop(
                 self.images[img_idx], frame_w, frame_h)
-            canvas.paste(placed_img, (int(x_pos), int(y_img_top)))
+            canvas.paste(placed_img, (x_pos, int(y_img_top)))
             img_idx += 1
+        else:
+            start_col = 2 if row == 0 else 0
+            for col in range(start_col, cols):
+                if img_idx >= len(self.images):
+                    break
+                x_pos = side_margin + spacing + col * (frame_w + spacing)
+                y_img_top = y1 + frame_top_offset
+                placed_img = self.processor.cover_resize_crop(
+                    self.images[img_idx], frame_w, frame_h)
+                canvas.paste(placed_img, (int(x_pos), int(y_img_top)))
+                img_idx += 1
 
     @property
     def engine(self):

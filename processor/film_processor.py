@@ -376,6 +376,11 @@ class FilmProcessor:
             if err:
                 return None, err
 
+            # Single-photo mode: compress layout to one column so canvas
+            # is only as wide as the frame itself (same as run()).
+            if len(files) == 1 and self.config.get('single_photo_mode', False):
+                self.config['columns'] = 1
+
             is_120 = (self.config['film_format'] == "120")
 
             if is_120:
