@@ -13,7 +13,7 @@ from utils.helpers import load_config, save_config, add_pack_image_history, LABE
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("FilmSheet")
+        self.root.title("FilmSheet v1.5.0 @Escaper")
         self.root.geometry("660x850")
 
         cfg = load_config()
@@ -166,6 +166,11 @@ class App:
         ttk.Button(basic_frame, text="浏览...", command=self.browse_input).grid(row=0, column=2, padx=5)
         ttk.Label(basic_frame, text="输出:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Entry(basic_frame, textvariable=self.vars['output_file'], width=35).grid(row=1, column=1, columnspan=2, sticky=tk.EW)
+
+        # Single photo export mode — shown first so users choose input method immediately
+        self.single_photo_cb = ttk.Checkbutton(
+            basic_frame, text="单张照片导出", variable=self.vars['single_photo_mode'])
+        self.single_photo_cb.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=5)
 
         # ---- 参数设置 ----
         param_frame = ttk.LabelFrame(main_frame, text="参数设置", padding="10")
@@ -328,10 +333,6 @@ class App:
         # Batch export checkbox
         self.batch_cb = ttk.Checkbutton(out_frame, text="同时生成接触印相版", variable=self.vars['batch_export_enabled'])
         self.batch_cb.grid(row=0, column=5, sticky=tk.W, padx=(20,0))
-
-        # Single photo export checkbox
-        self.single_photo_cb = ttk.Checkbutton(out_frame, text="单张照片导出", variable=self.vars['single_photo_mode'])
-        self.single_photo_cb.grid(row=0, column=4, sticky=tk.W, padx=(10,0))
 
         # ---- 控制按钮 ----
         ctrl_frame = ttk.Frame(main_frame)
@@ -590,7 +591,7 @@ class App:
 
         # 在临时窗口中显示
         preview_win = tk.Toplevel(self.root)
-        preview_win.title("FilmSheet Preview")
+        preview_win.title("FilmSheet v1.5.0 @Escaper — Preview")
         preview_win.geometry(f"{img.width + 40}x{img.height + 80}")
 
         # Canvas + scrollbar
@@ -636,7 +637,8 @@ class App:
             if not single_file or not os.path.isfile(single_file):
                 messagebox.showerror("Error", "请选择要导出的单张照片！")
                 return
-            self.vars['input_folder'].set(os.path.dirname(single_file))
+            input_dir = os.path.dirname(single_file)
+            self.vars['input_folder'].set(input_dir)
 
         output_name = self.vars['output_file'].get()
         if not output_name.lower().endswith(('.png', '.jpg', '.jpeg')):

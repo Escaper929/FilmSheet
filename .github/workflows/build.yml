@@ -39,8 +39,8 @@ jobs:
               'packages': ['PIL', 'ttkthemes'],
               'includes': ['PIL', 'ttkthemes', 'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
               'plist': {
-                  'CFBundleName': 'FilmSheet',
-                  'CFBundleDisplayName': 'FilmSheet',
+                  'CFBundleName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
+                  'CFBundleDisplayName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
                   'CFBundleIdentifier': 'com.filmsheet.app',
                   'CFBundleVersion': '${{ steps.version.outputs.VERSION }}',
                   'CFBundleShortVersionString': '${{ steps.version.outputs.VERSION }}',
@@ -88,14 +88,18 @@ jobs:
           pip install --upgrade pip
           pip install pillow pyinstaller ttkthemes
 
+      - name: 获取版本号
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
       - name: 打包 Windows 可执行文件
         run: |
-          pyinstaller --onefile --windowed --name FilmSheet main.py
+          pyinstaller --onefile --windowed --name "FilmSheet-v${{ steps.version.outputs.VERSION }}" main.py
 
       - name: 压缩 .exe
         run: |
           dir dist
-          Compress-Archive -Path dist/FilmSheet.exe -DestinationPath FilmSheet-Windows.zip
+          Compress-Archive -Path "dist/FilmSheet-${{ steps.version.outputs.VERSION }}.exe" -DestinationPath "FilmSheet-Windows.zip"
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4
