@@ -42,7 +42,7 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     'output_file':     {"type": "string", "default": "filmsheet_output.jpg"},
 
     # Parameters
-    'thumb_width':     {"type": "int",    "default": 400,  "range": (300, 800)},
+    'thumb_width':     {"type": "int",    "default": 400},
     'spacing':         {"type": "int",    "default": 20},
     'columns':         {"type": "int",    "default": 6,    "range": (3, 10)},
     'force_landscape': {"type": "bool",   "default": True},

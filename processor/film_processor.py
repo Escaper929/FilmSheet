@@ -284,8 +284,10 @@ class FilmProcessor:
                 batch_config['render_style'] = style
 
                 out_path = batch_config['output_path']
-                name, ext = os.path.splitext(out_path)
-                batch_config['output_path'] = f"{name}_{style}{ext}"
+                # Only append style suffix when batch rendering multiple styles
+                if batch_enabled and len(styles) > 1:
+                    name, ext = os.path.splitext(out_path)
+                    batch_config['output_path'] = f"{name}_{style}{ext}"
 
                 batch_proc = FilmProcessor(batch_config)
                 batch_proc.images = processed_imgs if hasattr(self, 'images') else []
