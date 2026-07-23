@@ -32,13 +32,12 @@ jobs:
         run: |
           cat > setup.py << 'EOF'
           from setuptools import setup
-          APP = ['main.py']
+          APP = [{'main.py': {'name': 'FilmSheet'}}]
           DATA_FILES = []
           OPTIONS = {
               'argv_emulation': True,
               'packages': ['PIL', 'ttkthemes'],
               'includes': ['PIL', 'ttkthemes', 'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
-              'APP_NAME': 'FilmSheet',
               'plist': {
                   'CFBundleName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
                   'CFBundleDisplayName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
@@ -59,7 +58,7 @@ jobs:
       - name: 打包 macOS 应用
         run: |
           rm -rf build dist
-          python setup.py py2app
+          python setup.py py2app -a
 
       - name: 压缩 .app
         run: |
