@@ -226,10 +226,10 @@ class TestConfigSchema(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_validate_invalid_thumb_width(self):
-        config = {"thumb_width": 100}  # below minimum 300
+        # thumb_width range has been removed; no validation error expected
+        config = {"thumb_width": 100}
         valid, errors = validate_config(config)
-        self.assertFalse(valid)
-        self.assertTrue(any("thumb_width" in e for e in errors))
+        self.assertTrue(valid)
 
     def test_validate_invalid_render_style(self):
         config = {"render_style": "invalid_style"}

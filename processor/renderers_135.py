@@ -54,15 +54,14 @@ class Renderer135(BaseRenderer):
 
         # Single-column mode: exactly 10 perforations across the strip with the image
         # centered so that the gap from each outermost perforation to the image edge
-        # is equal (34px at 36mm frame width, ~0.65 pitch).
+        # is equal (34px at 36mm frame width, ~0.65 pitch). Add a bit of extra film
+        # strip on each side so the outermost perforations fully show.
         if cols == 1:
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
             num_perfs = 10
-            # last perf cx = 25 + (num_perfs-1)*pitch_px, need total_w-25 > last_perf
-            # so that range(25, total_w-25, pitch) includes it. Use just barely over.
-            total_pitch_width = (num_perfs - 1) * pitch_px + 1  # tight so last perf just clears range upper bound
-            common['total_w'] = 50 + total_pitch_width
+            total_pitch_width = (num_perfs - 1) * pitch_px + 1
+            common['total_w'] = total_pitch_width + int(80 * base_scale)
             common['_single_photo'] = True
 
         # 135-specific layout values
@@ -224,7 +223,11 @@ class Renderer135(BaseRenderer):
             )
 
     def _draw_single_photo_decor(self, draw, layout, row, y1, y2, img_idx, scale):
-        """Single-photo decoration: perforations + centered top edge text."""
+        """Single-photo decoration: perforations + centered top/bottom edge text.
+
+        Bottom edge: a random number (1-40) centered above the image, plus a small
+        triangle to its right — mirroring the multi-photo style.
+        """
         # Draw perforations (full width)
         self._draw_perforations(draw, layout, y1, y2, scale)
 
@@ -235,27 +238,51 @@ class Renderer135(BaseRenderer):
             return
 
         color = self.colors["text_color"]
+        edge_y_offset = int(0.9 * layout['scale_factor']) * scale
 
-        # Centered edge text above the image
+        # --- Top edge: centered brand + film type ---
         top_parts = [edge_info["brand"]]
         if edge_info["film_type"]:
             top_parts.append(edge_info["film_type"])
         top_line = "  ".join(top_parts)
 
         if top_line:
-            font = self.processor._load_font(int(font_size * 0.9))
-            edge_y_offset = int(0.9 * layout['scale_factor']) * scale
+            font_top = self.processor._load_font(int(font_size * 0.9))
             edge_y_top = y1 + edge_y_offset
-
-            bbox = draw.textbbox((0, 0), top_line, font=font, anchor="mm")
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
 
             total_w = layout['big_total_w']
             x_center = total_w // 2
-            y_text = edge_y_top - text_h // 2
 
-            draw.text((x_center, y_text), top_line, fill=color, font=font, anchor="mm")
+            draw.text((x_center, edge_y_top), top_line, fill=color, font=font_top, anchor="mm")
+
+        # --- Bottom edge: random number (1-40) + triangle, centered under image ---
+        edge_y_bottom = y2 - edge_y_offset
+
+        side_margin = layout['side_margin'] * scale
+        spacing = layout['spacing'] * scale
+        frame_w = layout['frame_w_px'] * scale
+        # In single-photo mode, image is centered in the canvas; use that same center
+        cols = layout.get('cols', 1)
+        if cols == 1:
+            total_w = layout['big_total_w']
+            cx = int((total_w - frame_w) / 2 + frame_w // 2)
+        else:
+            cx = side_margin + spacing + frame_w // 2
+
+        # Random number between 1 and 40
+        render_seed = int(time.time()) ^ (row * 7919 + img_idx)
+        rng = random.Random(render_seed)
+        number = rng.randint(1, 40)
+        num_str = str(number)
+
+        bbox = draw.textbbox((0, 0), num_str, font=font)
+        nw = bbox[2] - bbox[0]
+        draw.text((cx - nw // 2, edge_y_bottom), num_str, fill=color, font=font, anchor="mm")
+        # Triangle right after the number
+        gap = 25
+        self.processor._draw_triangle(
+            draw, cx - nw // 2 + nw + gap, edge_y_bottom, font_size * 0.7, color
+        )
 
     def _draw_perforations(self, draw, layout, y1, y2, scale):
         """Draw perforations along top and bottom of a strip."""
@@ -268,10 +295,25 @@ class Renderer135(BaseRenderer):
         perf_center_offset = layout['perf_center_offset_px'] * scale
         perf_h = layout['perf_h_px'] * scale
 
+        # Use custom side gap for multi-photo mode; single-photo uses center-aligned.
+        aa_s = layout.get('aa_scale', 1)
+        is_single = layout.get('_single_photo', False)
+        big_total_w = layout['big_total_w']
+
+        if is_single:
+            # Center-aligned: spread evenly across canvas, not via range() offset.
+            pitch_px_aa = int(pitch_px)
+            # For 10 perfs with span (N-1)*pitch: gap from edge to first perf center
+            gap = (big_total_w - 9 * pitch_px_aa) // 2
+            perf_cx_positions = [gap + i * pitch_px_aa for i in range(10)]
+        else:
+            gap = int(25 * scale)
+            perf_cx_positions = list(range(gap, big_total_w - gap, int(pitch_px)))
+
         if perf_type == "KS":
             perf_w = layout['perf_w_ks_px'] * scale
             perf_r = layout['perf_r_px'] * scale
-            for x in range(25 * scale, layout['big_total_w'] - 25 * scale, int(pitch_px)):
+            for x in perf_cx_positions:
                 for cy in (y1 + perf_center_offset, y2 - perf_center_offset):
                     draw.rounded_rectangle(
                         [x - perf_w // 2, cy - perf_h // 2,
@@ -280,7 +322,7 @@ class Renderer135(BaseRenderer):
         else:
             perf_w = layout['perf_w_bh_px'] * scale
             cd = layout['bh_cd_px'] * scale
-            for x in range(25 * scale, layout['big_total_w'] - 25 * scale, int(pitch_px)):
+            for x in perf_cx_positions:
                 for cy in (y1 + perf_center_offset, y2 - perf_center_offset):
                     draw.rectangle(
                         [x - perf_w // 2, cy - perf_h // 2 + cd,
