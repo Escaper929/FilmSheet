@@ -44,6 +44,29 @@ class Renderer135(BaseRenderer):
         common = self._calc_common_layout(
             thumb_w, spacing, cols, rows, strip_h, bag_gap, base_scale)
 
+        # Perforation type (needed for layout and _draw_performations fallback)
+        perf_type = self.engine.determine_perf_type(
+            self.config.get('info_film', ''),
+            self.config.get('perf_mode', 'Auto'))
+
+        # frame_w_px is needed before the single-image block below
+        frame_w_px = int(frame_w_mm * scale_factor)
+
+        # Single-column mode: strip width = margin(25) + 1 pitch gap + image + 1 pitch
+        # gap + margin(25), so the image has exactly 1 pitch of empty film-base on each
+        # side, symmetrically centered within the perforation grid.
+        if cols == 1:
+            pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
+            pitch_px = int(pitch_mm * scale_factor)
+            # total_w = left_margin(25) + pitch_gap + frame_w + pitch_gap + right_margin(25)
+            total_pitch_width = 2 * pitch_px + frame_w_px
+            new_side_margin = max(25, (total_pitch_width + 50 - thumb_w - 2 * spacing) // 2)
+            common['side_margin'] = new_side_margin
+            common['total_w'] = 50 + total_pitch_width
+            common['_single_photo'] = True
+            # image_x at base scale = 25 + pitch_px
+            common['_img_left_offset_unscaled_px'] = 25 + pitch_px
+
         # 135-specific layout values
         common.update({
             'frame_w_mm': frame_w_mm, 'frame_h_mm': frame_h_mm,
@@ -55,38 +78,67 @@ class Renderer135(BaseRenderer):
             'perf_center_offset_px': int((2.01 + 2.794 / 2.0) * scale_factor),
             'frame_top_offset_px': int((35.0 - 24.0) / 2.0 * scale_factor),
             'frame_h_px': int(frame_h_mm * scale_factor),
-            'frame_w_px': int(frame_w_mm * scale_factor),
+            'frame_w_px': frame_w_px,
             'perf_h_px': int(2.794 * scale_factor),
             'perf_w_ks_px': int(1.981 * scale_factor),
             'perf_w_bh_px': int(1.854 * scale_factor),
             'perf_r_px': int(0.508 * scale_factor),
             'bh_cd_px': int(0.35 * scale_factor),
-            'pitch_px': int(self.engine.get_perf_pitch(
-                self.engine.determine_perf_type(
-                    self.config.get('info_film', ''),
-                    self.config.get('perf_mode', 'Auto'))
-            ) * scale_factor),
+            'perf_type': perf_type,
+            'pitch_px': int(self.engine.get_perf_pitch(perf_type) * scale_factor),
         })
         return common
 
-    def draw_strip_decoration(self, draw, layout, row, y1, y2, img_idx, aa_scale=1):
-        """Draw perforations and edge text for a 135 strip row."""
-        scale = layout.get('aa_scale', 1)
-        base_scale = layout['base_scale']
-        thumb_w = layout['thumb_w']
-        total_w = layout['big_total_w']
+    def render(self):
+        """Override to skip pack image, info block, and watermark in single-photo mode."""
+        layout = self.compute_layout()
+        canvas, draw, layout = self._build_canvas(layout)
 
+        if not layout.get('_single_photo', False):
+            self._draw_pack_image(canvas, layout)
+            self._draw_info_block(canvas, layout)
+
+        result = self._draw_strips(canvas, layout)
+        if result == "已取消":
+            return "已取消"
+
+        if not layout.get('_single_photo', False):
+            self._draw_watermark(canvas, layout)
+
+        canvas = self._downscale_if_aa(canvas, layout)
+
+        if self.is_preview:
+            return canvas
+
+        self._save_output(canvas)
+        return "success"
+
+    def draw_strip_decoration(self, draw, layout, row, y1, y2, img_idx, aa_scale=1):
+        """Draw perforations and centered edge text for 135 strip rows.
+
+        In single-photo mode the edge text is rendered once, centered above
+        the image instead of scattered along the top edge.
+        """
+        is_single = layout.get('_single_photo', False)
+        if is_single:
+            self._draw_single_photo_decor(draw, layout, row, y1, y2, img_idx, aa_scale)
+        else:
+            self._draw_multi_photo_decor(draw, layout, row, y1, y2, img_idx, aa_scale)
+
+    def _draw_multi_photo_decor(self, draw, layout, row, y1, y2, img_idx, scale):
+        """Original decoration logic: perforations + scattered edge text."""
         # Draw perforations
         self._draw_perforations(draw, layout, y1, y2, scale)
 
         edge_info = self.processor._generate_edge_text()
-        font_size = int(16 * thumb_w / 400 * 0.85) * scale
+        font_size = int(16 * layout['thumb_w'] / 400 * 0.85) * scale
         font = self.processor._load_font(font_size)
         if not font:
             return
 
         color = self.colors["text_color"]
-        margin = int(40 * base_scale) * scale
+        margin = int(40 * layout['base_scale']) * scale
+        total_w = layout['big_total_w']
         offset_range = int(0.08 * total_w)
 
         # --- Top edge: random positions, brand + film type ---
@@ -173,6 +225,40 @@ class Renderer135(BaseRenderer):
                 draw, sep_x, edge_y_bottom, font_size * 0.6, color
             )
 
+    def _draw_single_photo_decor(self, draw, layout, row, y1, y2, img_idx, scale):
+        """Single-photo decoration: perforations + centered top edge text."""
+        # Draw perforations (full width)
+        self._draw_perforations(draw, layout, y1, y2, scale)
+
+        edge_info = self.processor._generate_edge_text()
+        font_size = int(16 * layout['thumb_w'] / 400 * 0.85) * scale
+        font = self.processor._load_font(font_size)
+        if not font:
+            return
+
+        color = self.colors["text_color"]
+
+        # Centered edge text above the image
+        top_parts = [edge_info["brand"]]
+        if edge_info["film_type"]:
+            top_parts.append(edge_info["film_type"])
+        top_line = "  ".join(top_parts)
+
+        if top_line:
+            font = self.processor._load_font(int(font_size * 0.9))
+            edge_y_offset = int(0.9 * layout['scale_factor']) * scale
+            edge_y_top = y1 + edge_y_offset
+
+            bbox = draw.textbbox((0, 0), top_line, font=font, anchor="mm")
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+
+            total_w = layout['big_total_w']
+            x_center = total_w // 2
+            y_text = edge_y_top - text_h // 2
+
+            draw.text((x_center, y_text), top_line, fill=color, font=font, anchor="mm")
+
     def _draw_perforations(self, draw, layout, y1, y2, scale):
         """Draw perforations along top and bottom of a strip."""
         perf_fill = self.colors["perf_fill"]
@@ -225,7 +311,9 @@ class Renderer135(BaseRenderer):
         cols = layout['cols']
         if cols == 1:
             total_w = layout['big_total_w']
-            x_pos = int((total_w - frame_w) / 2)
+            aa_scale = layout.get('aa_scale', 1)
+            unscaled_offset = layout.get('_img_left_offset_unscaled_px', 25 + int(layout.get('pitch_px', 52)))
+            x_pos = int(unscaled_offset * aa_scale)
             y_img_top = y1 + frame_top_offset
             placed_img = self.processor.cover_resize_crop(
                 self.images[img_idx], frame_w, frame_h)
