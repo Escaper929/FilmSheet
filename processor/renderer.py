@@ -139,7 +139,10 @@ class BaseRenderer:
         pack_img_path = self.config.get('pack_image', '')
         if pack_img_path and os.path.exists(pack_img_path):
             try:
-                return Image.open(pack_img_path).convert('RGB')
+                # Pre-load pack image once; cache in processor to avoid re-opening.
+                pack_img = Image.open(pack_img_path).convert('RGB')
+                self.processor._pack_img_original = pack_img
+                return pack_img
             except Exception:
                 pass
         return None
@@ -247,10 +250,24 @@ class BaseRenderer:
         if pack_w_display <= 0 or pack_h_display <= 0:
             return
 
-        pack_resized = pack_img.resize(
-            (pack_w_display * aa_scale, pack_h_display * aa_scale),
-            Image.Resampling.LANCZOS
-        )
+        # Cache resized pack image per-scale on the processor to avoid re-sizing
+        # for every strip row (each renderer gets its own FilmProcessor).
+        cache_key = ('pack_resized', pack_w_display * aa_scale, pack_h_display * aa_scale)
+        if hasattr(self.processor, '_size_cache'):
+            resized = self.processor._size_cache.get(cache_key)
+        else:
+            self.processor._size_cache = {}
+            resized = None
+        if resized is None:
+            resized = pack_img.resize(
+                (pack_w_display * aa_scale, pack_h_display * aa_scale),
+                Image.Resampling.LANCZOS
+            )
+            if hasattr(self.processor, '_size_cache'):
+                self.processor._size_cache[cache_key] = resized
+            else:
+                self.processor._size_cache = {cache_key: resized}
+        pack_resized = resized
         pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
 
         has_pack_stroke = self.config.get('pack_border_stroke', True)
@@ -321,8 +338,6 @@ class BaseRenderer:
             base_scale, thumb_w
         )
 
-    # -- Strip rows --------------------------------------------------
-
     def _draw_strips(self, canvas, layout):
         draw = layout['draw']
         aa_scale = layout.get('aa_scale', 1)
@@ -347,15 +362,35 @@ class BaseRenderer:
             draw.rectangle([0, y1, total_w, y2], fill=film_base)
 
             # Format-specific decoration (perforations, edge text, etc.)
+            # Pre-count images placed in this row so img_idx advances by the
+            # actual number of frames rather than the full column count.
+            # This matters when the first row skips head margins (start_col=2).
+            n_placed = self._count_images_in_row(layout, row, img_idx)
             self.draw_strip_decoration(draw, layout, row, y1, y2, img_idx, aa_scale)
-
-            # Place images in this row
             self._place_images_in_row(canvas, layout, row, y1, y2, img_idx, aa_scale)
-            img_idx += cols
+            img_idx += n_placed
 
             if not self.is_preview:
                 self._progress(50 + int((row + 1) / rows * 50),
                                f"渲染行: {row+1}/{rows}")
+
+    def _count_images_in_row(self, layout, row, img_start):
+        """How many images will this row place?"""
+        cols = layout['cols']
+        total = len(self.images)
+        if img_start >= total:
+            return 0
+
+        if cols == 1:
+            return min(1, total - img_start)
+
+        start_col = 2 if row == 0 else 0
+        count = 0
+        for col in range(start_col, cols):
+            if (img_start + count) >= total:
+                break
+            count += 1
+        return count
 
     def _place_images_in_row(self, canvas, layout, row, y1, y2, img_idx, aa_scale):
         """Place images for one row. Override in subclass for custom placement."""

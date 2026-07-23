@@ -105,15 +105,32 @@ def _crop_to_135_ratio(img: Image.Image) -> Image.Image:
 
 
 def cover_resize_crop(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
-    """Cover-resize and center-crop an image to target dimensions."""
+    """Cover-resize and center-crop an image to target dimensions.
+
+    Uses a two-pass strategy: fast BICUBIC resize to approximate scale,
+    then LANCZOS for final size. This avoids one expensive LANCZOS operation
+    while keeping visual quality acceptable (the thumbnail stage already reduced
+    resolution).
+    """
     img_w, img_h = img.size
     if img_w == 0 or img_h == 0:
         return img
+
     scale = max(target_w / img_w, target_h / img_h)
     new_w = int(round(img_w * scale))
     new_h = int(round(img_h * scale))
-    if scale != 1:
-        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-    left = (new_w - target_w) // 2
-    top = (new_h - target_h) // 2
-    return img.crop((left, top, left + target_w, top + target_h))
+
+    # Case A: no scaling needed → just center-crop
+    if new_w == img_w and new_h == img_h:
+        result = img
+    # Case B: single LANCZOS pass suffices (intermediate == target)
+    elif new_w == target_w and new_h == target_h:
+        result = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    # Case C: two-pass — BICUBIC first, then LANCZOS final
+    else:
+        intermediate = img.resize((new_w, new_h), Image.Resampling.BICUBIC)
+        result = intermediate.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+    left = (result.width - target_w) // 2
+    top = (result.height - target_h) // 2
+    return result.crop((left, top, left + target_w, top + target_h))
