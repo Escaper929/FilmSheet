@@ -112,11 +112,13 @@ class Renderer135(BaseRenderer):
         edge_y_offset = int(0.9 * layout['scale_factor']) * scale
         edge_y_top = y1 + edge_y_offset
 
+        # Pre-compose top-line once per row (same for all occurrences in this row)
+        top_parts = [edge_info["brand"]]
+        if edge_info["film_type"]:
+            top_parts.append(edge_info["film_type"])
+        top_line = "  ".join(top_parts)
+
         for x_pos in selected_x:
-            top_parts = [edge_info["brand"]]
-            if edge_info["film_type"]:
-                top_parts.append(edge_info["film_type"])
-            top_line = "  ".join(top_parts)
             draw.text((x_pos, edge_y_top), top_line, fill=color, font=font, anchor="mm")
 
         # --- Bottom edge: fixed at image centers + separator triangles ---
@@ -142,21 +144,25 @@ class Renderer135(BaseRenderer):
             cur_img += 1
             col_idx += 1
 
+        # Cache number widths to avoid repeated textbbox calls
+        number_widths = {}
+        def _num_w(n_str):
+            if n_str not in number_widths:
+                bbox = draw.textbbox((0, 0), n_str, font=font)
+                number_widths[n_str] = bbox[2] - bbox[0]
+            return number_widths[n_str]
+
         # Draw numbered text at each image center
         for cx, num in image_centers:
-            # Draw number centered, triangle to the right of it
             num_str = str(num)
-            num_font = self.processor._load_font(font_size)
-            if num_font:
-                bbox = draw.textbbox((0, 0), num_str, font=num_font)
-                num_w = bbox[2] - bbox[0]
-                # Place number centered at cx
-                draw.text((cx - num_w // 2, edge_y_bottom), num_str, fill=color, font=num_font, anchor="mm")
-                # Triangle right after the number, proportional to number width
-                gap = 25
-                self.processor._draw_triangle(
-                    draw, cx - num_w // 2 + num_w + gap, edge_y_bottom, font_size * 0.7, color
-                )
+            nw = _num_w(num_str)
+            # Place number centered at cx
+            draw.text((cx - nw // 2, edge_y_bottom), num_str, fill=color, font=font, anchor="mm")
+            # Triangle right after the number, proportional to number width
+            gap = 25
+            self.processor._draw_triangle(
+                draw, cx - nw // 2 + nw + gap, edge_y_bottom, font_size * 0.7, color
+            )
 
         # Draw separator triangles between adjacent images
         for i in range(len(image_centers) - 1):

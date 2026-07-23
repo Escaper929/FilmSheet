@@ -78,6 +78,15 @@ class FilmProcessor:
         col_gap = int(40 * thumb_w / 400) if thumb_w > 200 else int(40 * base_scale)
         num_cols = max(len(row) for row in INFO_LAYOUT)
         slot_widths = [0] * num_cols
+
+        # --- Phase 1: Measure all text widths once via textbbox -------------------
+        measured_texts = {}  # text -> width (cached to avoid repeated textbbox calls)
+        def _text_w(text):
+            if text not in measured_texts:
+                bbox = draw.textbbox((0, 0), text, font=font_main)
+                measured_texts[text] = bbox[2] - bbox[0]
+            return measured_texts[text]
+
         for row_keys in INFO_LAYOUT:
             for col_idx, key in enumerate(row_keys):
                 if key is None:
@@ -88,15 +97,16 @@ class FilmProcessor:
                     full_text = f"{lbl} {val}" if val else lbl
                 else:
                     full_text = f"{lbl}: {val}" if val else f"{lbl}: "
-                bbox = draw.textbbox((0, 0), full_text, font=font_main)
-                text_w = bbox[2] - bbox[0]
+                text_w = _text_w(full_text)
                 slot_widths[col_idx] = max(slot_widths[col_idx], text_w + col_gap)
+
         total_slot_w = sum(slot_widths)
         available_w = text_area_right - text_area_left
         if total_slot_w > available_w and total_slot_w > 0:
             scale_factor = available_w / total_slot_w
             slot_widths = [int(sw * scale_factor) for sw in slot_widths]
 
+        # --- Phase 2: Render (reuse cached widths where possible) -----------------
         rendered_row = 0
         for r_idx, row_keys in enumerate(INFO_LAYOUT):
             if not any(info_data.get(k, '') for k in row_keys if k):
@@ -110,10 +120,9 @@ class FilmProcessor:
                 lbl = LABEL_MAP[key][label_idx]
                 val = info_data.get(key, '')
                 if key in NO_COLON_FIELDS:
-                    label_str = lbl
-                    draw.text((abs_x, abs_y), label_str, fill=colors["info_label_color"], font=font_main)
+                    draw.text((abs_x, abs_y), lbl, fill=colors["info_label_color"], font=font_main)
                     if val:
-                        lbl_bbox = draw.textbbox((0, 0), label_str, font=font_main)
+                        lbl_bbox = draw.textbbox((0, 0), lbl, font=font_main)
                         val_x = abs_x + (lbl_bbox[2] - lbl_bbox[0]) + int(8 * thumb_w / 400) if thumb_w > 200 else int(8 * base_scale)
                         draw.text((val_x, abs_y), val, fill=colors["info_text_color"], font=font_main)
                 else:
