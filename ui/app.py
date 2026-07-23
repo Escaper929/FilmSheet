@@ -7,13 +7,14 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image
 
+from filmsheet._version import __VERSION__
 from processor.film_processor import FilmProcessor
 from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
 
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("FilmSheet v1.6.3 @Escaper")
+        self.root.title(f"FilmSheet {__VERSION__} @Escaper")
         self.root.geometry("660x850")
 
         cfg = load_config()
@@ -591,7 +592,7 @@ class App:
 
         # 在临时窗口中显示
         preview_win = tk.Toplevel(self.root)
-        preview_win.title("FilmSheet v1.6.3 @Escaper — Preview")
+        preview_win.title(f"FilmSheet {__VERSION__} @Escaper — Preview")
         preview_win.geometry(f"{img.width + 40}x{img.height + 80}")
 
         # Canvas + scrollbar
