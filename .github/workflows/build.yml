@@ -38,6 +38,7 @@ jobs:
               'argv_emulation': True,
               'packages': ['PIL', 'ttkthemes'],
               'includes': ['PIL', 'ttkthemes', 'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
+              'APP_NAME': 'FilmSheet',
               'plist': {
                   'CFBundleName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
                   'CFBundleDisplayName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
