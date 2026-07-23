@@ -13,7 +13,7 @@ from utils.helpers import load_config, save_config, add_pack_image_history, LABE
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("FilmSheet v1.5.0 @Escaper")
+        self.root.title("FilmSheet v1.6.3 @Escaper")
         self.root.geometry("660x850")
 
         cfg = load_config()
@@ -591,7 +591,7 @@ class App:
 
         # 在临时窗口中显示
         preview_win = tk.Toplevel(self.root)
-        preview_win.title("FilmSheet v1.5.0 @Escaper — Preview")
+        preview_win.title("FilmSheet v1.6.3 @Escaper — Preview")
         preview_win.geometry(f"{img.width + 40}x{img.height + 80}")
 
         # Canvas + scrollbar
