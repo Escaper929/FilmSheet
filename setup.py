@@ -7,8 +7,8 @@ OPTIONS = {
     'packages': ['PIL', 'tkinter', 'ttkthemes'],
     'includes': ['tkinter', 'PIL', 'ttkthemes'],
     'plist': {
-        'CFBundleName': 'FilmSheet v1.5.0 @Escaper',
-        'CFBundleDisplayName': 'FilmSheet v1.5.0 @Escaper',
+        'CFBundleName': 'FilmSheet v1.6.3 @Escaper',
+        'CFBundleDisplayName': 'FilmSheet v1.6.3 @Escaper',
         'CFBundleIdentifier': 'com.filmsheet.app',
         'CFBundleVersion': '1.0.0',
         'CFBundleShortVersionString': '1.0.0',

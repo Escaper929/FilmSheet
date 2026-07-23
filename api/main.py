@@ -44,7 +44,7 @@ from utils.helpers import (
 app = FastAPI(
     title="FilmSheet API",
     description="胶片扫描排版渲染服务 — 把你的数码扫描件变成真实的灯箱灯板 / 接触印相作品。",
-    version="1.5.0",
+    version="1.6.3",
 )
 
 # Serve mobile web frontend
@@ -831,4 +831,4 @@ async def render_film_sheet(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "FilmSheet API", "version": "1.5.0"}
+    return {"status": "ok", "service": "FilmSheet API", "version": "1.6.3"}
