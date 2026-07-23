@@ -52,20 +52,18 @@ class Renderer135(BaseRenderer):
         # frame_w_px is needed before the single-image block below
         frame_w_px = int(frame_w_mm * scale_factor)
 
-        # Single-column mode: strip width = margin(25) + 1 pitch gap + image + 1 pitch
-        # gap + margin(25), so the image has exactly 1 pitch of empty film-base on each
-        # side, symmetrically centered within the perforation grid.
+        # Single-column mode: exactly 10 perforations across the strip with the image
+        # centered so that the gap from each outermost perforation to the image edge
+        # is equal (34px at 36mm frame width, ~0.65 pitch).
         if cols == 1:
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
-            # total_w = left_margin(25) + pitch_gap + frame_w + pitch_gap + right_margin(25)
-            total_pitch_width = 2 * pitch_px + frame_w_px
-            new_side_margin = max(25, (total_pitch_width + 50 - thumb_w - 2 * spacing) // 2)
-            common['side_margin'] = new_side_margin
+            num_perfs = 10
+            # last perf cx = 25 + (num_perfs-1)*pitch_px, need total_w-25 > last_perf
+            # so that range(25, total_w-25, pitch) includes it. Use just barely over.
+            total_pitch_width = (num_perfs - 1) * pitch_px + 1  # tight so last perf just clears range upper bound
             common['total_w'] = 50 + total_pitch_width
             common['_single_photo'] = True
-            # image_x at base scale = 25 + pitch_px
-            common['_img_left_offset_unscaled_px'] = 25 + pitch_px
 
         # 135-specific layout values
         common.update({
@@ -306,14 +304,12 @@ class Renderer135(BaseRenderer):
         frame_top_offset = layout['frame_top_offset_px'] * scale
         thumb_w = layout['thumb_w'] * scale
 
-        # In single-photo mode, center the image on the film strip rather than
-        # placing it at the left edge.
+        # In single-photo mode, center the image on the film strip so that the gap
+        # from each outermost perforation to the image edge is equal (symmetric).
         cols = layout['cols']
         if cols == 1:
             total_w = layout['big_total_w']
-            aa_scale = layout.get('aa_scale', 1)
-            unscaled_offset = layout.get('_img_left_offset_unscaled_px', 25 + int(layout.get('pitch_px', 52)))
-            x_pos = int(unscaled_offset * aa_scale)
+            x_pos = int((total_w - frame_w) / 2)
             y_img_top = y1 + frame_top_offset
             placed_img = self.processor.cover_resize_crop(
                 self.images[img_idx], frame_w, frame_h)
