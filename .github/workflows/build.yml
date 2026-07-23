@@ -22,43 +22,16 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow py2app ttkthemes
+          pip install pillow pyinstaller ttkthemes
 
       - name: 获取版本号
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: 创建 setup.py
-        run: |
-          cat > setup.py << 'EOF'
-          from setuptools import setup
-          APP = [{'main.py': {'name': 'FilmSheet'}}]
-          DATA_FILES = []
-          OPTIONS = {
-              'argv_emulation': True,
-              'packages': ['PIL', 'ttkthemes'],
-              'includes': ['PIL', 'ttkthemes', 'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox'],
-              'plist': {
-                  'CFBundleName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
-                  'CFBundleDisplayName': 'FilmSheet v${{ steps.version.outputs.VERSION }}',
-                  'CFBundleIdentifier': 'com.filmsheet.app',
-                  'CFBundleVersion': '${{ steps.version.outputs.VERSION }}',
-                  'CFBundleShortVersionString': '${{ steps.version.outputs.VERSION }}',
-                  'NSHighResolutionCapable': True,
-              }
-          }
-          setup(
-              app=APP,
-              data_files=DATA_FILES,
-              options={'py2app': OPTIONS},
-              setup_requires=['py2app'],
-          )
-          EOF
-
       - name: 打包 macOS 应用
         run: |
-          rm -rf build dist
-          python setup.py py2app -a
+          mkdir -p dist
+          pyinstaller --onedir --windowed --name "FilmSheet" main.py
 
       - name: 压缩 .app
         run: |
