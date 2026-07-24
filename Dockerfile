@@ -1,12 +1,5 @@
 FROM python:3.11-slim
 
-# Configure mirror sources for faster builds in China
-RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main non-free non-free-firmware contrib" > /etc/apt/sources.list && \
-    echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main non-free non-free-firmware contrib" >> /etc/apt/sources.list && \
-    echo "deb https://mirrors.aliyun.com/debian/ bookworm-backports main non-free non-free-firmware contrib" >> /etc/apt/sources.list && \
-    echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main non-free non-free-firmware contrib" >> /etc/apt/sources.list && \
-    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-
 # Install CJK fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk fonts-noto-cjk-extra \
