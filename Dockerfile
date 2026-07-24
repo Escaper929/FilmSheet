@@ -10,26 +10,31 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
 
 WORKDIR /app
 
-# Download dependencies first (cache layer)
+# Install dependencies first (cached unless requirements change)
 COPY api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir \
     --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
     -r requirements.txt
 
-# Clone source code from GitHub (shallow, single branch — avoids old tags/gitlinks)
-RUN git clone --depth 1 --single-branch --branch main \
-    https://github.com/Escaper929/FilmSheet.git /tmp/filmsheet 2>&1 || true
+# Clone source with --no-recurse-submodules to avoid submodule resolution errors
+# Single branch + shallow to minimize network traffic
+RUN GIT_CONFIG_GLOBAL=$(mktemp) && \
+    echo '[submodule] active = none' > $GIT_CONFIG_GLOBAL && \
+    env GIT_CONFIG_GLOBAL=$GIT_CONFIG_GLOBAL git clone --depth 1 --single-branch --branch main \
+        --no-recurse-submodules \
+        https://github.com/Escaper929/FilmSheet.git /tmp/filmsheet 2>&1 || true && \
+    rm -f $GIT_CONFIG_GLOBAL
 
-# Copy source modules
+# Copy source modules from cloned repo
 RUN if [ -d /tmp/filmsheet ]; then \
-        cp -r /tmp/filmsheet/api/main.py . && \
-        cp -r /tmp/filmsheet/api/index.html . && \
+        cp /tmp/filmsheet/api/main.py . && \
+        cp /tmp/filmsheet/api/index.html . && \
         cp -r /tmp/filmsheet/processor/ ./processor/ && \
         cp -r /tmp/filmsheet/engine/ ./engine/ && \
         cp -r /tmp/filmsheet/utils/ ./utils/ && \
         cp -r /tmp/filmsheet/filmsheet/ ./filmsheet/; \
     else \
-        echo "FAILED to clone"; exit 1; \
+        echo "FAILED to clone repository"; exit 1; \
     fi
 
 EXPOSE 8000
