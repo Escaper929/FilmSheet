@@ -7,13 +7,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install dependencies (no source code here — mounted via volume)
-COPY requirements.txt ./requirements.txt
+# Install dependencies
+COPY api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-clean main.py for Docker standalone mode (remove sys.path, unused imports)
-COPY main.py ./main.py
-RUN sed -i '/^sys\.path\.insert/d; /^# Add parent directory to path for imports/d; /^import tempfile$/d; /^import sys$/d' main.py
+# Copy all source modules (api/main.py depends on processor/, engine/, utils/, filmsheet/)
+COPY processor/ ./processor/
+COPY engine/ ./engine/
+COPY utils/ ./utils/
+COPY filmsheet/ ./filmsheet/
+
+# Copy the API entry point and mobile web frontend
+COPY api/main.py .
+COPY api/index.html .
 
 EXPOSE 8000
 
