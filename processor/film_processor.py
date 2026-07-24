@@ -431,34 +431,22 @@ class FilmProcessor:
             return None, str(e)
 
     def _render_preview_135(self, images):
-        """轻量级 135 预览渲染，无 AA，无保存，无文件夹打开。"""
+        """Lightweight 135 preview render, no AA, no save, no folder open."""
         renderer = Renderer135(
             self.config, self, images,
             status_callback=lambda _: None,
             progress_callback=lambda *_: None,
             is_preview=True)
-        layout = renderer.compute_layout()
-        canvas, draw, layout = renderer._build_canvas(layout)
-        renderer._draw_pack_image(canvas, layout)
-        renderer._draw_info_block(canvas, layout)
-        renderer._draw_strips(canvas, layout)
-        renderer._draw_watermark(canvas, layout)
-        return renderer._downscale_if_aa(canvas, layout)
+        return renderer.render()
 
     def _render_preview_120(self, images):
-        """轻量级 120 预览渲染，无 AA，无保存，无文件夹打开。"""
+        """Lightweight 120 preview render, no AA, no save, no folder open."""
         renderer = Renderer120(
             self.config, self, images,
             status_callback=lambda _: None,
             progress_callback=lambda *_: None,
             is_preview=True)
-        layout = renderer.compute_layout()
-        canvas, draw, layout = renderer._build_canvas(layout)
-        renderer._draw_pack_image(canvas, layout)
-        renderer._draw_info_block(canvas, layout)
-        renderer._draw_strips(canvas, layout)
-        renderer._draw_watermark(canvas, layout)
-        return renderer._downscale_if_aa(canvas, layout)
+        return renderer.render()
 
     def _render_120(self, images, status_callback, progress_callback):
         renderer = Renderer120(
