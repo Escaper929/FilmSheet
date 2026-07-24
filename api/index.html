@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>FilmSheet 胶片排版</title>
+<title>FilmSheet v1.6.3 胶片排版</title>
 <style>
 :root {
   --primary: #ff8c3c;
@@ -397,7 +397,7 @@ body {
 
 <!-- Header -->
 <div class="header">
-  <h1>🎞 FilmSheet</h1>
+  <h1>🎞 FilmSheet v1.6.3</h1>
   <div class="api-url" onclick="showApiModal()">📡 API地址</div>
 </div>
 
@@ -549,17 +549,13 @@ body {
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">每行列数</label>
-        <select id="columns" onchange="updateConfig()">
-          <option value="1">单张（1列）</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6" selected>6</option>
-          <option value="7">7</option>
-          <option value="8">8</option>
-          <option value="9">9</option>
-          <option value="10">10</option>
-        </select>
+        <input type="number" id="columns" min="1" value="6" onchange="updateConfig()" oninput="updateConfig()">
+      </div>
+    </div>
+    <div class="card">
+      <div class="toggle-row">
+        <span class="toggle-label">单张模式（胶卷条排版）</span>
+        <div class="toggle-switch" id="singlePhoto" onclick="toggleSwitch(this)"></div>
       </div>
     </div>
     <div class="form-row">
@@ -707,16 +703,12 @@ let config = {
   pack_position: 'left',
   pack_size: 80,
   pack_border_stroke: true,
+  single_photo: false,
 };
 
 const SUB_FORMATS = {
   '135': ['标准 36×24', '半格 18×24', '方形 24×24', 'XPan 65×24'],
   '120': ['645', '66', '67', '68', '69', '612', '617'],
-};
-
-const SUB_FORMAT_COLS = {
-  '标准 36×24': 6, '半格 18×24': 12, '方形 24×24': 8, 'XPan 65×24': 3,
-  '645': 6, '66': 6, '67': 5, '68': 5, '69': 4, '612': 4, '617': 3,
 };
 
 // ===== Init =====
@@ -779,10 +771,6 @@ function updateSubFormats() {
       group.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       config.sub_format = f;
-      // Auto-adjust columns
-      const cols = SUB_FORMAT_COLS[f] || 6;
-      config.columns = cols;
-      document.getElementById('columns').value = String(cols);
     };
     group.appendChild(btn);
   });
@@ -798,17 +786,16 @@ function toggleSwitch(el) {
     config.pack_border_stroke = el.classList.contains('on');
   } else if (id === 'batchExport') {
     config.batch_export_enabled = el.classList.contains('on');
+  } else if (id === 'singlePhoto') {
+    config.single_photo = el.classList.contains('on');
   }
 }
 
 // ===== Select Change Handlers =====
 function updateConfig() {
   const tw = document.getElementById('thumbWidth');
-  const cols = document.getElementById('columns');
-  const sp = document.getElementById('spacing');
   config.thumb_width = parseInt(tw.value);
-  config.columns = parseInt(cols.value);
-  config.spacing = parseInt(sp.value);
+  config.columns = parseInt(document.getElementById('columns').value) || 1;
 }
 
 // ===== File Upload =====
@@ -884,6 +871,7 @@ async function render() {
   config.output_format = document.getElementById('outputFormat').value;
   config.quality = parseInt(document.getElementById('quality').value);
   config.batch_export_enabled = document.getElementById('batchExport')?.classList.contains('on') ?? false;
+  config.single_photo = document.getElementById('singlePhoto')?.classList.contains('on') ?? false;
 
   const btn = document.getElementById('btnRender');
   btn.disabled = true;

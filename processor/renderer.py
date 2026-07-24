@@ -208,7 +208,7 @@ class BaseRenderer:
             orig_w, orig_h = layout['big_total_w'], layout['big_total_h']
             target_w = orig_w // aa_scale
             target_h = orig_h // aa_scale
-            return canvas.resize((target_w, target_h), Image.Resampling.LANCZOS)
+            return canvas.resize((target_w, target_h), Image.LANCZOS)
         return canvas
 
     # -- Pack image --------------------------------------------------
@@ -261,7 +261,7 @@ class BaseRenderer:
         if resized is None:
             resized = pack_img.resize(
                 (pack_w_display * aa_scale, pack_h_display * aa_scale),
-                Image.Resampling.LANCZOS
+                Image.LANCZOS
             )
             if hasattr(self.processor, '_size_cache'):
                 self.processor._size_cache[cache_key] = resized

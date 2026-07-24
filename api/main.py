@@ -334,7 +334,7 @@ def _render_135_api(
             pack_w_display = max_allow_w
             pack_h_display = int(pack_w_display * (orig_h / orig_w))
         if pack_w_display > 0 and pack_h_display > 0:
-            big_pack = pack_img.resize((pack_w_display * aa_scale, pack_h_display * aa_scale), Image.Resampling.LANCZOS)
+            big_pack = pack_img.resize((pack_w_display * aa_scale, pack_h_display * aa_scale), Image.LANCZOS)
             pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
             if pack_position == "left":
                 pack_x = big_side_margin
@@ -447,7 +447,7 @@ def _render_135_api(
 
     # Downscale if AA
     if not is_preview:
-        canvas = big_canvas.resize((total_w, total_h), Image.Resampling.LANCZOS)
+        canvas = big_canvas.resize((total_w, total_h), Image.LANCZOS)
     else:
         canvas = big_canvas
 
@@ -598,7 +598,7 @@ def _render_120_api(
             pack_w_display = max_allow_w
             pack_h_display = int(pack_w_display * (orig_h / orig_w))
         if pack_w_display > 0 and pack_h_display > 0:
-            big_pack = pack_img.resize((pack_w_display * aa_scale, pack_h_display * aa_scale), Image.Resampling.LANCZOS)
+            big_pack = pack_img.resize((pack_w_display * aa_scale, pack_h_display * aa_scale), Image.LANCZOS)
             pack_y = (top_blank_height - pack_h_display) // 2 * aa_scale
             if pack_position == "left":
                 pack_x = big_side_margin
@@ -697,7 +697,7 @@ def _render_120_api(
 
     # Downscale if AA
     if not is_preview:
-        canvas = big_canvas.resize((total_w, total_h), Image.Resampling.LANCZOS)
+        canvas = big_canvas.resize((total_w, total_h), Image.LANCZOS)
     else:
         canvas = big_canvas
 

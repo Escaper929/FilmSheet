@@ -39,7 +39,7 @@ def process_135_image(
             img = img.rotate(-90, expand=True)
         img = _crop_to_135_ratio(img)
         target_h = int(thumb_width * 24.0 / 36.0)
-        img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
+        img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
     except Exception:
         return None
@@ -84,7 +84,7 @@ def process_120_image(
             top = (h - new_h) // 2
             img = img.crop((0, top, w, top + new_h))
         target_h = int(thumb_width / target_ratio)
-        img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
+        img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
     except Exception:
         return None
@@ -125,11 +125,11 @@ def cover_resize_crop(img: Image.Image, target_w: int, target_h: int) -> Image.I
         result = img
     # Case B: single LANCZOS pass suffices (intermediate == target)
     elif new_w == target_w and new_h == target_h:
-        result = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+        result = img.resize((target_w, target_h), Image.LANCZOS)
     # Case C: two-pass — BICUBIC first, then LANCZOS final
     else:
-        intermediate = img.resize((new_w, new_h), Image.Resampling.BICUBIC)
-        result = intermediate.resize((target_w, target_h), Image.Resampling.LANCZOS)
+        intermediate = img.resize((new_w, new_h), Image.BICUBIC)
+        result = intermediate.resize((target_w, target_h), Image.LANCZOS)
 
     left = (result.width - target_w) // 2
     top = (result.height - target_h) // 2

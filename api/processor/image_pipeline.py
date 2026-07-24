@@ -39,7 +39,7 @@ def process_135_image(
             img = img.rotate(-90, expand=True)
         img = _crop_to_135_ratio(img)
         target_h = int(thumb_width * 24.0 / 36.0)
-        img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
+        img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
     except Exception:
         return None
@@ -84,7 +84,7 @@ def process_120_image(
             top = (h - new_h) // 2
             img = img.crop((0, top, w, top + new_h))
         target_h = int(thumb_width / target_ratio)
-        img = img.resize((thumb_width, target_h), Image.Resampling.LANCZOS)
+        img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
     except Exception:
         return None
@@ -113,7 +113,7 @@ def cover_resize_crop(img: Image.Image, target_w: int, target_h: int) -> Image.I
     new_w = int(round(img_w * scale))
     new_h = int(round(img_h * scale))
     if scale != 1:
-        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
     left = (new_w - target_w) // 2
     top = (new_h - target_h) // 2
     return img.crop((left, top, left + target_w, top + target_h))
