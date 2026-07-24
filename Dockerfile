@@ -1,25 +1,39 @@
+FROM python:3.11-slim AS base
+
+# Clone source code from GitHub
+ARG REPO_URL=https://github.com/Escaper929/FilmSheet.git
+ARG REPO_BRANCH=main
+
+RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} /tmp/filmsheet 2>/dev/null || \
+    (sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+     apt-get update && git install -y git && \
+     git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} /tmp/filmsheet)
+
 FROM python:3.11-slim
 
-# Install CJK fonts
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install CJK fonts (use mirror for slower networks)
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null; \
+    apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk fonts-noto-cjk-extra \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install dependencies
-COPY api/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy source from build stage
+COPY --from=base /tmp/filmsheet/requirements.txt ./requirements.txt
+COPY --from=base /tmp/filmsheet/api/requirements.txt /app/requirements.txt
+COPY --from=base /tmp/filmsheet/processor/ ./processor/
+COPY --from=base /tmp/filmsheet/engine/ ./engine/
+COPY --from=base /tmp/filmsheet/utils/ ./utils/
+COPY --from=base /tmp/filmsheet/filmsheet/ ./filmsheet/
+COPY --from=base /tmp/filmsheet/api/main.py .
+COPY --from=base /tmp/filmsheet/api/index.html .
 
-# Copy all source modules (main.py depends on processor/, engine/, utils/, filmsheet/)
-COPY processor/ ./processor/
-COPY engine/ ./engine/
-COPY utils/ ./utils/
-COPY filmsheet/ ./filmsheet/
-
-# Copy the API entry point and mobile web frontend
-COPY api/main.py .
-COPY api/index.html .
+# Install dependencies (use mirror for slower networks)
+RUN pip install --no-cache-dir \
+    --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
 
 EXPOSE 8000
 
