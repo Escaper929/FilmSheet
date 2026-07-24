@@ -10,19 +10,27 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
 
 WORKDIR /app
 
-# Install dependencies (use mirror for slower networks)
+# Download dependencies first (cache layer)
 COPY api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir \
     --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
     -r requirements.txt
 
-# Copy source modules (main.py depends on processor/, engine/, utils/, filmsheet/)
-COPY api/main.py .
-COPY api/index.html .
-COPY processor/ ./processor/
-COPY engine/ ./engine/
-COPY utils/ ./utils/
-COPY filmsheet/ ./filmsheet/
+# Clone source code from GitHub (shallow, single branch — avoids old tags/gitlinks)
+RUN git clone --depth 1 --single-branch --branch main \
+    https://github.com/Escaper929/FilmSheet.git /tmp/filmsheet 2>&1 || true
+
+# Copy source modules
+RUN if [ -d /tmp/filmsheet ]; then \
+        cp -r /tmp/filmsheet/api/main.py . && \
+        cp -r /tmp/filmsheet/api/index.html . && \
+        cp -r /tmp/filmsheet/processor/ ./processor/ && \
+        cp -r /tmp/filmsheet/engine/ ./engine/ && \
+        cp -r /tmp/filmsheet/utils/ ./utils/ && \
+        cp -r /tmp/filmsheet/filmsheet/ ./filmsheet/; \
+    else \
+        echo "FAILED to clone"; exit 1; \
+    fi
 
 EXPOSE 8000
 
