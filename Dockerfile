@@ -1,13 +1,3 @@
-# FilmSheet API — self-contained Docker build from GitHub
-# Built via: docker compose build with any local context (this Dockerfile clones everything internally)
-
-FROM python:3.11-slim AS downloader
-
-# Clone source code from GitHub (single branch, shallow)
-ARG REPO_URL=https://github.com/Escaper929/FilmSheet.git
-ARG REPO_BRANCH=main
-RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} /app/src
-
 FROM python:3.11-slim
 
 # Use mirror for slower networks (NAS environments)
@@ -20,13 +10,19 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
 
 WORKDIR /app
 
-# Copy source from download stage
-COPY --from=downloader /app/src/ .
-
 # Install dependencies (use mirror for slower networks)
+COPY api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir \
     --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
-    -r api/requirements.txt
+    -r requirements.txt
+
+# Copy source modules (main.py depends on processor/, engine/, utils/, filmsheet/)
+COPY api/main.py .
+COPY api/index.html .
+COPY processor/ ./processor/
+COPY engine/ ./engine/
+COPY utils/ ./utils/
+COPY filmsheet/ ./filmsheet/
 
 EXPOSE 8000
 
