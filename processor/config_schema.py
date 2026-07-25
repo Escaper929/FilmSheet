@@ -44,7 +44,7 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     # Parameters
     'thumb_width':     {"type": "int",    "default": 400},
     'spacing':         {"type": "int",    "default": 20},
-    'columns':         {"type": "int",    "default": 6,    "range": (3, 10)},
+    'columns':         {"type": "int",    "default": 6,    "range": (1, 99)},
     'force_landscape': {"type": "bool",   "default": True},
     'edge_text':       {"type": "string", "default": ""},
 

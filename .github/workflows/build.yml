@@ -26,7 +26,11 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=v${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: 注入版本号到 index.html (macOS)
+        run: |
+          python -c "import pathlib; p=pathlib.Path('api/index.html'); p.write_text(p.read_text().replace('{VERSION}', '${{ steps.version.outputs.VERSION }}'))"
 
       - name: 打包 macOS 应用
         run: |
@@ -63,7 +67,11 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=v${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: 注入版本号到 index.html (Windows)
+        run: |
+          python -c "import pathlib; p=pathlib.Path('api/index.html'); p.write_text(p.read_text().replace('{VERSION}', '${{ steps.version.outputs.VERSION }}'))"
 
       - name: 打包 Windows 可执行文件
         run: |

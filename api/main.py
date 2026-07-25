@@ -60,7 +60,7 @@ async def render_film_sheet(
     film_format: str = Form("135", description="画幅：135 或 120"),
     sub_format: str = Form("标准 36×24", description="子画幅：135 支持 标准/半格/方形/XPan；120 支持 645/66/67/68/69/612/617"),
     thumb_width: int = Form(400, ge=300, description="缩略图宽度（最小300px，越大越清晰）"),
-    columns: int = Form(6, ge=3, le=10, description="每行列数"),
+    columns: int = Form(6, ge=1, le=99, description="每行列数"),
     spacing: int = Form(20, description="图片间距"),
     force_landscape: bool = Form(True, description="强制横向（竖图自动旋转90°）"),
     processing_mode: str = Form("positive", description="成像模式：positive 正片 / negative 负片"),

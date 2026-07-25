@@ -1,7 +1,7 @@
 services:
   filmsheet-api:
     build:
-      context: .
+      context: git://github.com/Escaper929/FilmSheet.git#main
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
