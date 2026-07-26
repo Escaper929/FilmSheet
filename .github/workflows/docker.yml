@@ -11,6 +11,7 @@ on:
       - 'utils/**'
       - 'filmsheet/**'
       - '.github/workflows/docker.yml'
+  workflow_dispatch:   # 允许手动触发
 
 jobs:
   build-and-push:
