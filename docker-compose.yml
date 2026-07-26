@@ -1,8 +1,6 @@
 services:
   filmsheet-api:
-    build:
-      context: git://github.com/Escaper929/FilmSheet.git#main
-      dockerfile: Dockerfile
+    image: liritian/filmsheet-api:latest
     ports:
       - "8000:8000"
     restart: unless-stopped
