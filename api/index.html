@@ -419,6 +419,10 @@ body {
     </div>
     <input type="file" id="fileInput" multiple accept="image/*" onchange="handleFiles(this.files)">
     <div class="img-grid" id="imgGrid"></div>
+    <div class="toggle-row" style="margin-top:10px">
+      <span class="toggle-label">单张模式（胶卷条排版）</span>
+      <div class="toggle-switch" id="singlePhoto" onclick="toggleSwitch(this)"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -550,12 +554,6 @@ body {
       <div class="form-group">
         <label class="form-label">每行列数</label>
         <input type="number" id="columns" min="1" value="6" onchange="updateConfig()" oninput="updateConfig()">
-      </div>
-    </div>
-    <div class="card">
-      <div class="toggle-row">
-        <span class="toggle-label">单张模式（胶卷条排版）</span>
-        <div class="toggle-switch" id="singlePhoto" onclick="toggleSwitch(this)"></div>
       </div>
     </div>
     <div class="form-row">

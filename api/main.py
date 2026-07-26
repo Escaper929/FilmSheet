@@ -46,8 +46,11 @@ app = FastAPI(
 # Serve mobile web frontend
 @app.get("/")
 async def serve_web():
-    from fastapi.responses import FileResponse
-    return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
+    html_path = os.path.join(os.path.dirname(__file__), "index.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{VERSION}", __VERSION__)
+    return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +88,7 @@ async def render_film_sheet(
     signature: str = Form("", description="水印签名（右下角显示）"),
     is_preview: bool = Form(False, description="预览模式（关闭抗锯齿，加快渲染）"),
     batch_export_enabled: bool = Form(False, description="批量导出（同时生成另一种风格）"),
+    single_photo: bool = Form(False, description="单张模式（胶卷条排版）"),
     pack_image_file: Optional[UploadFile] = Form(None, description="胶卷包装图片（可选）"),
 ):
     """Render a film sheet from uploaded images + config.
@@ -120,6 +124,7 @@ async def render_film_sheet(
         "perf_mode": perf_mode,
         "signature": signature,
         "batch_export_enabled": batch_export_enabled,
+        "single_photo_mode": single_photo,
     }
 
     is_valid, errors = validate_config(config)

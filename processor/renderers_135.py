@@ -52,11 +52,11 @@ class Renderer135(BaseRenderer):
         # frame_w_px is needed before the single-image block below
         frame_w_px = int(frame_w_mm * scale_factor)
 
-        # Single-column mode: exactly 10 perforations across the strip with the image
+        # Single-column mode or single_photo_mode: exactly 10 perforations across the strip with the image
         # centered so that the gap from each outermost perforation to the image edge
         # is equal (34px at 36mm frame width, ~0.65 pitch). Add a bit of extra film
         # strip on each side so the outermost perforations fully show.
-        if cols == 1:
+        if cols == 1 or self.config.get('single_photo_mode', False):
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
             num_perfs = 10
