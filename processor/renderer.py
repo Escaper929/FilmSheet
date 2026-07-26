@@ -50,7 +50,7 @@ class BaseRenderer:
         self._draw_watermark(canvas, layout)
         canvas = self._downscale_if_aa(canvas, layout)
 
-        if self.is_preview:
+        if self.is_preview or not self.config.get("output_path"):
             return canvas
 
         self._save_output(canvas)
