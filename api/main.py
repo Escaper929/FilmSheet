@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import sys
 import tempfile
 from typing import Optional
@@ -134,8 +135,10 @@ async def render_film_sheet(
         return Response(content=f"配置错误: {'; '.join(errors)}", media_type="text/plain", status_code=400)
 
     # Load images from uploaded files — process through the same pipeline as desktop
-    tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
+    pil_images = []
+    tmp_dir = None
     try:
+        tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
         for idx, f in enumerate(images):
             data = await f.read()
             try:
@@ -161,17 +164,18 @@ async def render_film_sheet(
             if processed is not None:
                 pil_images.append(processed)
     finally:
-        import shutil
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if not pil_images:
         return Response(content="没有可处理的图片", media_type="text/plain", status_code=400)
 
     # Save pack image to temp file if provided
     pack_img_path = pack_image_path  # from form field (filesystem path from desktop)
+    pack_tmp_dir = None
     if pack_image_file and pack_image_file.filename:
-        tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
-        pack_img_path = os.path.join(tmp_dir, pack_image_file.filename)
+        pack_tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
+        pack_img_path = os.path.join(pack_tmp_dir, pack_image_file.filename)
         with open(pack_img_path, "wb") as f:
             f.write(await pack_image_file.read())
         config["pack_image"] = pack_img_path
@@ -181,6 +185,10 @@ async def render_film_sheet(
         canvas = render_120(pil_images, config, is_preview=is_preview)
     else:
         canvas = render_135(pil_images, config, is_preview=is_preview)
+
+    # Clean up pack image temp dir if created
+    if pack_tmp_dir:
+        shutil.rmtree(pack_tmp_dir, ignore_errors=True)
 
     # Return as image
     buf = io.BytesIO()
