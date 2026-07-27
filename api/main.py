@@ -26,6 +26,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from processor.config_schema import validate_config, sanitize_config, FIELD_DEFS
 from processor.edge_text import generate_edge_text
+from processor.image_pipeline import process_135_image as _process_135_image
+from processor.image_pipeline import process_120_image as _process_120_image
 from processor.api_render import render_135, render_120
 from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
@@ -131,15 +133,37 @@ async def render_film_sheet(
     if not is_valid:
         return Response(content=f"配置错误: {'; '.join(errors)}", media_type="text/plain", status_code=400)
 
-    # Load images from uploaded files
-    pil_images = []
-    for f in images:
-        data = await f.read()
-        try:
-            img = Image.open(io.BytesIO(data)).convert("RGB")
-            pil_images.append(img)
-        except Exception:
-            pass
+    # Load images from uploaded files — process through the same pipeline as desktop
+    tmp_dir = tempfile.mkdtemp(prefix="filmsheet_")
+    try:
+        for idx, f in enumerate(images):
+            data = await f.read()
+            try:
+                img = Image.open(io.BytesIO(data)).convert("RGB")
+            except Exception:
+                continue
+
+            if film_format == "120":
+                sub_fmt = sub_format or "66"
+                target_ratio = FILM_FORMAT_RATIOS.get(sub_fmt, 1.0)
+                tmp_path = os.path.join(tmp_dir, f"{idx}.png")
+                img.save(tmp_path)
+                processed = _process_120_image(
+                    tmp_path, target_ratio, thumb_width,
+                    processing_mode, force_landscape
+                )
+            else:
+                tmp_path = os.path.join(tmp_dir, f"{idx}.png")
+                img.save(tmp_path)
+                processed = _process_135_image(
+                    tmp_path, thumb_width, processing_mode, force_landscape
+                )
+
+            if processed is not None:
+                pil_images.append(processed)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if not pil_images:
         return Response(content="没有可处理的图片", media_type="text/plain", status_code=400)
