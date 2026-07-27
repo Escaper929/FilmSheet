@@ -196,7 +196,7 @@ class App:
         self.sub_combo = ttk.Combobox(param_frame, textvariable=self.vars['sub_format'],
                                       state="readonly", width=12)
         self.sub_combo.grid(row=0, column=4, sticky=tk.W, padx=5)
-        self.sub_combo.bind("<<ComboboxSelected>>", lambda e: self.update_ratio_label())
+        self.sub_combo.bind("<<ComboboxSelected>>", lambda e: (self.update_ratio_label(), self.auto_adjust_columns()))
 
         # 比例显示
         ttk.Label(param_frame, text="比例:").grid(row=0, column=5, sticky=tk.W, padx=(5,0))
@@ -367,6 +367,7 @@ class App:
             if current not in ["645", "66", "67", "68", "69", "612", "617", "624"]:
                 self.vars['sub_format'].set("66")
         self.update_ratio_label()
+        self.auto_adjust_columns()  # 新增：切换画幅时自动更新列数
 
     # ---- 模板管理 ----
 
