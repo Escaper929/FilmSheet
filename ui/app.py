@@ -22,7 +22,7 @@ class App:
 
         # 确保子画幅有默认值
         sub_format = cfg.get("sub_format", "标准 36×24")
-        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "612", "617"]:
+        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "612", "617", "624"]:
             sub_format = "标准 36×24"
 
         self.vars = {
@@ -362,9 +362,9 @@ class App:
             if current not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]:
                 self.vars['sub_format'].set("标准 36×24")
         else:
-            self.sub_combo['values'] = ["645", "66", "67", "68", "69", "612", "617"]
+            self.sub_combo['values'] = ["645", "66", "67", "68", "69", "612", "617", "624"]
             current = self.vars['sub_format'].get()
-            if current not in ["645", "66", "67", "68", "69", "612", "617"]:
+            if current not in ["645", "66", "67", "68", "69", "612", "617", "624"]:
                 self.vars['sub_format'].set("66")
         self.update_ratio_label()
 
@@ -477,13 +477,14 @@ class App:
         else:
             # 120 比例
             format_ratios = {
-                "645": "1.25:1",
+                "645": "1.35:1",
                 "66": "1:1",
-                "67": "1.167:1",
-                "68": "1.333:1",
+                "67": "1.25:1",
+                "68": "1.37:1",
                 "69": "1.5:1",
                 "612": "2:1",
-                "617": "2.833:1"
+                "617": "3:1",
+                "624": "4:1",
             }
             self.ratio_label.config(text=format_ratios.get(sub_format, ""))
 
@@ -514,6 +515,8 @@ class App:
                 recommended = 4
             elif sub_format == "617":
                 recommended = 3
+            elif sub_format == "624":
+                recommended = 2
 
         self.vars['columns'].set(recommended)
         self.status_lbl.config(text=f"自适应: {sub_format} → 每行 {recommended} 张", foreground="gray")

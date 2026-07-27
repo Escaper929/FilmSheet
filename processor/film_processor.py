@@ -336,7 +336,7 @@ class FilmProcessor:
                 future_to_file = {}
                 for f in files:
                     future = executor.submit(
-                        _process_120_image, f, target_ratio, thumb_w,
+                        _process_120_image, f, cfg.get('sub_format', '66'), thumb_w,
                         processing_mode, force_landscape
                     )
                     future_to_file[future] = f
@@ -358,7 +358,7 @@ class FilmProcessor:
             max_workers = max(4, cpu_count)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_file = {
-                    executor.submit(_process_135_image, f, thumb_w, processing_mode, force_landscape): f
+                    executor.submit(_process_135_image, f, thumb_w, processing_mode, force_landscape, cfg.get('sub_format', '标准 36×24')): f
                     for f in files
                 }
                 imgs = []

@@ -247,7 +247,7 @@ class TestConfigSchema(unittest.TestCase):
         self.assertEqual(SUB_FORMATS_135, ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"])
 
     def test_sub_formats_120(self):
-        self.assertEqual(SUB_FORMATS_120, ["645", "66", "67", "68", "69", "612", "617"])
+        self.assertEqual(SUB_FORMATS_120, ["645", "66", "67", "68", "69", "612", "617", "624"])
 
     def test_film_formats(self):
         self.assertEqual(FILM_FORMATS, ["135", "120"])
@@ -269,7 +269,8 @@ class TestConstants(unittest.TestCase):
     def test_film_format_ratios(self):
         self.assertEqual(FILM_FORMAT_RATIOS["135"], 1.5)
         self.assertEqual(FILM_FORMAT_RATIOS["66"], 1.0)
-        self.assertEqual(FILM_FORMAT_RATIOS["645"], 1.25)
+        # 645 ratio: 56/41.5 ≈ 1.35
+        self.assertAlmostEqual(FILM_FORMAT_RATIOS["645"], 56/41.5, places=3)
 
     def test_label_map_complete(self):
         expected_keys = {"roll", "camera", "film", "shoot_date", "dev_date", "proc", "lab", "scanner"}

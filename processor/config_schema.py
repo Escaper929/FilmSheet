@@ -12,7 +12,7 @@ SCHEMA_VERSION = 1
 
 # All valid sub-format values per film format
 SUB_FORMATS_135 = ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]
-SUB_FORMATS_120 = ["645", "66", "67", "68", "69", "612", "617"]
+SUB_FORMATS_120 = ["645", "66", "67", "68", "69", "612", "617", "624"]
 
 # All valid render styles
 RENDER_STYLES = ["lightbox", "contact_sheet"]

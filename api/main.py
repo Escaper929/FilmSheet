@@ -145,18 +145,17 @@ async def render_film_sheet(
 
             if film_format == "120":
                 sub_fmt = sub_format or "66"
-                target_ratio = FILM_FORMAT_RATIOS.get(sub_fmt, 1.0)
                 tmp_path = os.path.join(tmp_dir, f"{idx}.png")
                 img.save(tmp_path)
                 processed = _process_120_image(
-                    tmp_path, target_ratio, thumb_width,
+                    tmp_path, sub_fmt, thumb_width,
                     processing_mode, force_landscape
                 )
             else:
                 tmp_path = os.path.join(tmp_dir, f"{idx}.png")
                 img.save(tmp_path)
                 processed = _process_135_image(
-                    tmp_path, thumb_width, processing_mode, force_landscape
+                    tmp_path, thumb_width, processing_mode, force_landscape, sub_format
                 )
 
             if processed is not None:
