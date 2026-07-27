@@ -353,6 +353,9 @@ class App:
         self.status_lbl = ttk.Label(main_frame, text="FilmSheet Ready", foreground="gray")
         self.status_lbl.grid(row=9, column=0, columnspan=4, pady=5)
 
+        # Ensure auto_adjust_columns runs after status_lbl is created
+        self.auto_adjust_columns()
+
     def toggle_sub_format(self):
         """切换画幅时更新子画幅选项和比例显示"""
         film_format = self.vars['film_format'].get()
@@ -516,7 +519,9 @@ class App:
                 recommended = 1
 
         self.vars['columns'].set(recommended)
-        self.status_lbl.config(text=f"自适应: {sub_format} → 每行 {recommended} 张", foreground="gray")
+        # Only update status label if UI is fully initialized
+        if hasattr(self, 'status_lbl') and self.status_lbl is not None:
+            self.status_lbl.config(text=f"自适应: {sub_format} → 每行 {recommended} 张", foreground="gray")
 
     def update_ext(self, event):
         fmt = self.vars['output_format'].get()
