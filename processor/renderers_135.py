@@ -30,6 +30,8 @@ class Renderer135(BaseRenderer):
         thumb_w = self.config['thumb_width']
         spacing = int(self.config['spacing'] * thumb_w / 400)
         cols = self.config['columns']
+        if self.config.get('single_photo_mode', False):
+            cols = 1
         rows = math.ceil(len(self.images) / cols)
 
         sub_format = self.config.get('sub_format', '标准 36×24')
