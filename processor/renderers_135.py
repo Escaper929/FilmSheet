@@ -54,17 +54,21 @@ class Renderer135(BaseRenderer):
         # frame_w_px is needed before the single-image block below
         frame_w_px = int(frame_w_mm * scale_factor)
 
-        # Single-column mode or single_photo_mode: exactly 10 perforations across the strip with the image
+        # Single-column mode or single_photo_mode: exactly N perforations across the strip with the image
         # centered so that the gap from each outermost perforation to the image edge
-        # is equal (34px at 36mm frame width, ~0.65 pitch). Add a bit of extra film
-        # strip on each side so the outermost perforations fully show.
+        # is equal. Add a bit of extra film strip on each side so the outermost perforations fully show.
         if cols == 1 or self.config.get('single_photo_mode', False):
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
-            num_perfs = 10
-            total_pitch_width = (num_perfs - 1) * pitch_px + 1
+            frame_w_mm, frame_h_mm, num_perfs = self.sub_format_configs.get(
+                sub_format, (36, 24, 8))
+            # XPan needs more perforations due to wider format
+            if sub_format == "XPan 65×24":
+                num_perfs = 14
+            total_pitch_width = (num_perfs - 1) * pitch_px
             common['total_w'] = total_pitch_width + int(80 * base_scale)
             common['_single_photo'] = True
+            common['_num_perfs'] = num_perfs  # Store for perforation drawing
 
         # 135-specific layout values
         common.update({
@@ -305,9 +309,10 @@ class Renderer135(BaseRenderer):
         if is_single:
             # Center-aligned: spread evenly across canvas, not via range() offset.
             pitch_px_aa = int(pitch_px)
-            # For 10 perfs with span (N-1)*pitch: gap from edge to first perf center
-            gap = (big_total_w - 9 * pitch_px_aa) // 2
-            perf_cx_positions = [gap + i * pitch_px_aa for i in range(10)]
+            num_perfs = layout.get('_num_perfs', 10)
+            # For N perfs with span (N-1)*pitch: gap from edge to first perf center
+            gap = (big_total_w - (num_perfs - 1) * pitch_px_aa) // 2
+            perf_cx_positions = [gap + i * pitch_px_aa for i in range(num_perfs)]
         else:
             gap = int(25 * scale)
             perf_cx_positions = list(range(gap, big_total_w - gap, int(pitch_px)))
