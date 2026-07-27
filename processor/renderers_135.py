@@ -54,9 +54,8 @@ class Renderer135(BaseRenderer):
         # frame_w_px is needed before the single-image block below
         frame_w_px = int(frame_w_mm * scale_factor)
 
-        # Single-column mode or single_photo_mode: exactly N perforations across the strip with the image
-        # centered so that the gap from each outermost perforation to the image edge
-        # is equal. Add a bit of extra film strip on each side so the outermost perforations fully show.
+        # Single-column mode or single_photo_mode: adjust perforation count
+        # based on sub-format, but keep total width from normal layout calculation.
         if cols == 1 or self.config.get('single_photo_mode', False):
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
@@ -65,10 +64,9 @@ class Renderer135(BaseRenderer):
             # XPan needs more perforations due to wider format
             if sub_format == "XPan 65×24":
                 num_perfs = 14
-            total_pitch_width = (num_perfs - 1) * pitch_px
-            common['total_w'] = total_pitch_width + int(80 * base_scale)
             common['_single_photo'] = True
             common['_num_perfs'] = num_perfs  # Store for perforation drawing
+            # Note: Do not override common['total_w']; keep the value from _calc_common_layout
 
         # 135-specific layout values
         common.update({
