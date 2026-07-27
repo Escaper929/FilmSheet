@@ -506,18 +506,14 @@ class App:
                 recommended = 3
         else:  # 120
             # 根据常用底片袋习惯推荐
-            if sub_format in ["645", "66"]:
+            if sub_format in ["645"]:
+                recommended = 4
+            elif sub_format in ["66", "67", "68"]:
                 recommended = 6
-            elif sub_format in ["67", "68"]:
-                recommended = 5
-            elif sub_format == "69":
-                recommended = 4
-            elif sub_format == "612":
-                recommended = 4
-            elif sub_format == "617":
-                recommended = 3
-            elif sub_format == "624":
+            elif sub_format in ["69", "612"]:
                 recommended = 2
+            elif sub_format in ["617", "624"]:
+                recommended = 1
 
         self.vars['columns'].set(recommended)
         self.status_lbl.config(text=f"自适应: {sub_format} → 每行 {recommended} 张", foreground="gray")
