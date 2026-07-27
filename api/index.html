@@ -746,6 +746,7 @@ function selectRadio(el, group) {
     config.film_format = val;
     config.sub_format = SUB_FORMATS[val][0];
     updateSubFormats();
+    autoAdjustColumns();  // 切换画幅时自动调整列数
   } else if (group === 'procMode') {
     config.processing_mode = val;
   } else if (group === 'renderStyle') {
@@ -755,6 +756,39 @@ function selectRadio(el, group) {
   } else if (group === 'packPosition') {
     config.pack_position = val;
   }
+}
+
+// 根据画幅和子画幅自动调整列数
+function autoAdjustColumns() {
+  const filmFormat = config.film_format;
+  const subFormat = config.sub_format;
+  let recommended = 6;  // 默认值
+
+  if (filmFormat === '135') {
+    if (subFormat === '标准 36×24') {
+      recommended = 6;
+    } else if (subFormat === '半格 18×24') {
+      recommended = 12;
+    } else if (subFormat === '方形 24×24') {
+      recommended = 8;
+    } else if (subFormat === 'XPan 65×24') {
+      recommended = 3;
+    }
+  } else if (filmFormat === '120') {
+    if (subFormat === '645') {
+      recommended = 4;
+    } else if (['66', '67', '68'].includes(subFormat)) {
+      recommended = 6;
+    } else if (['69', '612'].includes(subFormat)) {
+      recommended = 2;
+    } else if (['617', '624'].includes(subFormat)) {
+      recommended = 1;
+    }
+  }
+
+  config.columns = recommended;
+  // 更新UI中的列数输入框
+  document.getElementById('columns').value = recommended;
 }
 
 function updateSubFormats() {
@@ -769,6 +803,7 @@ function updateSubFormats() {
       group.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       config.sub_format = f;
+      autoAdjustColumns();  // 切换子画幅时自动调整列数
     };
     group.appendChild(btn);
   });
