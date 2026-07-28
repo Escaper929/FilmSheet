@@ -239,7 +239,10 @@ class BaseRenderer:
             return  # no room for pack image
 
         top_blank_height = top_margin + info_height + int(65 * base_scale)
-        pack_h_display = min(int(top_blank_height * pack_size_pct / 100.0), 100)
+        # Max height scales with base_scale for proportional sizing
+        # Base 368px at thumb_w=400, scales proportionally (e.g., thumb_w=1000 → ~920px)
+        max_pack_h = int(368 * base_scale)
+        pack_h_display = min(int(top_blank_height * pack_size_pct / 100.0), max_pack_h)
         orig_w, orig_h = pack_img.size
         pack_w_display = int(pack_h_display * (orig_w / orig_h))
         max_allow_w = int(total_w * 0.35)
