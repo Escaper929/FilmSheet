@@ -86,6 +86,7 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     'perf_symmetry': {"type": "int", "default": 0, "range": (-10, 10)},
     'edge_text_offset': {"type": "int", "default": 0, "range": (-20, 20)},
     'edge_text_opacity': {"type": "int", "default": 100, "range": (0, 100)},
+    'single_photo_show_extra': {"type": "bool", "default": False},
 }
 
 # Output path is computed, not stored in config

@@ -71,18 +71,31 @@ class Renderer135(BaseRenderer):
                 num_perfs = 14
             common['_single_photo'] = True
             common['_num_perfs'] = num_perfs  # Store for perforation drawing
+
             # In single-photo mode, adjust layout for symmetric, compact film strip
             if self.config.get('single_photo_mode', False):
+                show_extra = self.config.get('single_photo_show_extra', False)
                 margin_per_side = 10  # pixels of black film base on each side
-                common['total_w'] = frame_w_px + 2 * margin_per_side
-                common['content_w'] = frame_w_px
-                common['side_margin'] = margin_per_side
-                # Remove top/bottom margins to show only the film strip (no extra whitespace)
-                common['top_area_height'] = 0
-                common['bottom_margin'] = 0
-                common['top_margin'] = 0
-                # Recalculate total height: should be just the strip height for single row
-                common['total_h'] = common['strip_h']
+
+                if show_extra:
+                    # When showing extra elements, keep normal layout
+                    # but if there's no info, apply symmetric top/bottom margins for balance
+                    if common.get('info_height', 0) == 0:
+                        sym_margin = int(25 * common['base_scale'])  # symmetric margin top and bottom
+                        common['top_margin'] = sym_margin
+                        common['bottom_margin'] = sym_margin
+                        common['top_area_height'] = sym_margin + int(65 * common['base_scale'])
+                    # Do NOT override total_w/content_w/side_margin to allow room for info block
+                else:
+                    # Remove top/bottom margins to show only the film strip (no extra whitespace)
+                    common['total_w'] = frame_w_px + 2 * margin_per_side
+                    common['content_w'] = frame_w_px
+                    common['side_margin'] = margin_per_side
+                    common['top_area_height'] = 0
+                    common['bottom_margin'] = 0
+                    common['top_margin'] = 0
+                    # Recalculate total height: should be just the strip height for single row
+                    common['total_h'] = common['strip_h']
 
         # Calculate frame_top_offset to center image vertically in the film strip
         # This uses the standard offset based on 35mm film width and 24mm image height.
@@ -112,11 +125,17 @@ class Renderer135(BaseRenderer):
         return common
 
     def render(self):
-        """Override to skip pack image, info block, and watermark in single-photo mode."""
+        """Override to skip pack image, info block, and watermark in single-photo mode
+        unless single_photo_show_extra is enabled.
+        """
         layout = self.compute_layout()
         canvas, draw, layout = self._build_canvas(layout)
 
-        if not layout.get('_single_photo', False):
+        single_photo = layout.get('_single_photo', False)
+        show_extra = self.config.get('single_photo_show_extra', False)
+
+        # Only draw pack/image/info/watermark in single-photo mode if show_extra is True
+        if not single_photo or show_extra:
             self._draw_pack_image(canvas, layout)
             self._draw_info_block(canvas, layout)
 
@@ -124,7 +143,7 @@ class Renderer135(BaseRenderer):
         if result == "已取消":
             return "已取消"
 
-        if not layout.get('_single_photo', False):
+        if not single_photo or show_extra:
             self._draw_watermark(canvas, layout)
 
         canvas = self._downscale_if_aa(canvas, layout)

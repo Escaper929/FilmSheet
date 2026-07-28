@@ -68,17 +68,30 @@ class Renderer120(BaseRenderer):
 
         # Single-photo mode: apply compact layout to match 135 single-photo effect
         if cols == 1:
-            margin_per_side = 10  # pixels of black film base on each side
-            # Adjust layout parameters for compact, centered single image
-            common['side_margin'] = margin_per_side
-            common['content_w'] = thumb_w  # content area equals image width
-            common['total_w'] = thumb_w + 2 * margin_per_side
-            # Remove top/bottom whitespace (info block, extra margins)
-            common['top_area_height'] = 0
-            common['bottom_margin'] = 0
-            common['top_margin'] = 0
-            # Total height is just the strip height (one row)
-            common['total_h'] = common['strip_h']
+            show_extra = self.config.get('single_photo_show_extra', False)
+
+            if show_extra:
+                # When showing extra, let the base layout determine dimensions
+                # But if there's no info, apply symmetric top/bottom margins for balance
+                if common.get('info_height', 0) == 0:
+                    sym_margin = int(25 * common['base_scale'])
+                    common['top_margin'] = sym_margin
+                    common['bottom_margin'] = sym_margin
+                    common['top_area_height'] = sym_margin + int(65 * common['base_scale'])
+                # Do NOT override total_w/content_w/side_margin to allow room for info block
+            else:
+                # Remove top/bottom whitespace (info block, extra margins)
+                margin_per_side = 10  # pixels of black film base on each side
+                common['side_margin'] = margin_per_side
+                common['content_w'] = thumb_w  # content area equals image width
+                common['total_w'] = thumb_w + 2 * margin_per_side
+                common['top_area_height'] = 0
+                common['bottom_margin'] = 0
+                common['top_margin'] = 0
+                # Total height is just the strip height (one row)
+                common['total_h'] = common['strip_h']
+
+            common['_single_photo'] = True  # Mark as single-photo mode
 
         common.update({
             'target_ratio': target_ratio,
@@ -201,3 +214,35 @@ class Renderer120(BaseRenderer):
                     self.images[img_idx], thumb_w, img_h)
                 canvas.paste(placed_img, (int(x_pos), int(y_img_top)))
                 img_idx += 1
+
+    def render(self):
+        """Render film sheet with optional pack/image/info/watermark in single-photo mode.
+
+        In single-photo mode (one column), pack image, info block, and watermark are
+        skipped by default, unless single_photo_show_extra is enabled.
+        """
+        layout = self.compute_layout()
+        canvas, draw, layout = self._build_canvas(layout)
+
+        single_photo = layout.get('_single_photo', False) or layout['cols'] == 1
+        show_extra = self.config.get('single_photo_show_extra', False)
+
+        # Only draw pack/image/info/watermark in single-photo mode if show_extra is True
+        if not single_photo or show_extra:
+            self._draw_pack_image(canvas, layout)
+            self._draw_info_block(canvas, layout)
+
+        result = self._draw_strips(canvas, layout)
+        if result == "已取消":
+            return "已取消"
+
+        if not single_photo or show_extra:
+            self._draw_watermark(canvas, layout)
+
+        canvas = self._downscale_if_aa(canvas, layout)
+
+        if self.is_preview or not self.config.get("output_path"):
+            return canvas
+
+        self._save_output(canvas)
+        return "success"

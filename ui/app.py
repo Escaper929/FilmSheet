@@ -49,6 +49,7 @@ class App:
             'signature': tk.StringVar(value=cfg.get("signature", "")),
             'batch_export_enabled': tk.BooleanVar(value=cfg.get("batch_export_enabled", False)),
             'current_template': tk.StringVar(value=cfg.get("current_template", "")),
+            'single_photo_show_extra': tk.BooleanVar(value=cfg.get("single_photo_show_extra", False)),
         }
 
         self.vars['single_photo_mode'] = tk.BooleanVar(value=False)
@@ -251,9 +252,17 @@ class App:
         ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
         ttk.Label(edge_frame, text="(留空则从'胶卷'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
 
+        # ---- 单张模式设置 ----
+        single_frame = ttk.LabelFrame(main_frame, text="单张模式", padding="5")
+        single_frame.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        single_show_extra_cb = ttk.Checkbutton(
+            single_frame, text="显示包装/信息/水印",
+            variable=self.vars['single_photo_show_extra'])
+        single_show_extra_cb.grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=5)
+
         # ---- 水印签名 ----
         sig_frame = ttk.LabelFrame(main_frame, text="水印签名", padding="5")
-        sig_frame.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        sig_frame.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(sig_frame, text="签名:").grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(sig_frame, textvariable=self.vars['signature'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
@@ -261,7 +270,7 @@ class App:
 
         # ---- 胶卷包装图 ----
         pack_frame = ttk.LabelFrame(main_frame, text="胶卷包装图", padding="10")
-        pack_frame.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        pack_frame.grid(row=6, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(pack_frame, text="图片:").grid(row=0, column=0, sticky=tk.W)
         self.pack_combo = ttk.Combobox(pack_frame, textvariable=self.vars['pack_image'],
@@ -291,7 +300,7 @@ class App:
 
         # ---- 拍摄信息 ----
         info_frame = ttk.LabelFrame(main_frame, text="拍摄信息记录 (选填)", padding="10")
-        info_frame.grid(row=6, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        info_frame.grid(row=7, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         lang_frame = ttk.Frame(info_frame)
         lang_frame.grid(row=0, column=0, columnspan=8, sticky=tk.W, pady=(0,5))
@@ -320,7 +329,7 @@ class App:
 
         # ---- 输出选项 ----
         out_frame = ttk.LabelFrame(main_frame, text="输出选项", padding="10")
-        out_frame.grid(row=7, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        out_frame.grid(row=8, column=0, columnspan=4, sticky=tk.EW, pady=5)
 
         ttk.Label(out_frame, text="格式:").grid(row=0, column=0, sticky=tk.W)
         fmt_combo = ttk.Combobox(out_frame, textvariable=self.vars['output_format'],
@@ -340,7 +349,7 @@ class App:
 
         # ---- 控制按钮 ----
         ctrl_frame = ttk.Frame(main_frame)
-        ctrl_frame.grid(row=8, column=0, columnspan=4, pady=15)
+        ctrl_frame.grid(row=9, column=0, columnspan=4, pady=15)
 
         self.progress_bar = ttk.Progressbar(ctrl_frame, orient=tk.HORIZONTAL, length=400, mode='determinate')
         self.progress_bar.pack(side=tk.TOP, fill=tk.X, pady=(0,10))
@@ -354,7 +363,7 @@ class App:
         self.cancel_btn = ttk.Button(btn_frame, text="取消", command=self.cancel_process, state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT, padx=5)
         self.status_lbl = ttk.Label(main_frame, text="FilmSheet Ready", foreground="gray")
-        self.status_lbl.grid(row=9, column=0, columnspan=4, pady=5)
+        self.status_lbl.grid(row=10, column=0, columnspan=4, pady=5)
 
         # Ensure auto_adjust_columns runs after status_lbl is created
         self.auto_adjust_columns()
@@ -382,7 +391,7 @@ class App:
         'pack_size', 'pack_border_stroke', 'processing_mode', 'thumb_width', 'columns',
         'spacing', 'force_landscape', 'perf_mode', 'output_format', 'quality',
         'signature', 'batch_export_enabled', 'edge_text',
-        'single_photo_mode',
+        'single_photo_mode', 'single_photo_show_extra',
     ]
 
     def _refresh_tmpl_combo(self):

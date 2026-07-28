@@ -65,9 +65,16 @@ def generate_edge_text(info_film: str, custom_edge_text: str = "") -> dict:
         Dict with keys: brand, film_type, lot_code, direction, custom.
     """
     if custom_edge_text and custom_edge_text.strip():
+        custom = custom_edge_text.strip()
+        # Parse custom edge text: split into brand and film_type at first space
+        # e.g., "KODAK Portra 400" → brand="KODAK", film_type="Portra 400"
+        parts = custom.split(None, 1)  # maxsplit=1 to keep film_type intact if it has spaces
+        brand = parts[0] if parts else ""
+        film_type = parts[1] if len(parts) > 1 else ""
+
         return {
-            "brand": custom_edge_text.strip(),
-            "film_type": "",
+            "brand": brand,
+            "film_type": film_type,
             "lot_code": "",
             "direction": "◀",
             "custom": True,
