@@ -26,7 +26,14 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=v${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: 更新版本号文件
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        shell: bash
+        run: |
+          echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
       # 已移除：index.html 中已不含 {VERSION} 占位符
 
@@ -65,9 +72,14 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=v${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      # 已移除：index.html 中已不含 {VERSION} 占位符
+      - name: 更新版本号文件
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        shell: bash
+        run: |
+          echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
       - name: 打包 Windows 可执行文件
         run: |
