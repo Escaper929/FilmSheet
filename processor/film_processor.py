@@ -203,11 +203,27 @@ class FilmProcessor:
 
     def _resolve_image_list(self):
         """Return (file_list, error_msg) from either single_image_path or input_folder."""
+        import json
         # Only use single_image_path if single_photo_mode is explicitly enabled
         if self.config.get('single_photo_mode', False):
             single = self.config.get('single_image_path', '')
-            if single and os.path.isfile(single):
-                return [single], None
+            if single:
+                # Try to parse as JSON first (for multiple file selection)
+                try:
+                    files = json.loads(single)
+                    if isinstance(files, list):
+                        # Filter out only existing files
+                        files = [f for f in files if os.path.isfile(f)]
+                        if files:
+                            return sorted(files), None
+                except:
+                    pass  # Fall back to treating as single file path
+                # Fallback: treat as single file path string
+                if isinstance(single, str) and os.path.isfile(single):
+                    return [single], None
+            # In single-photo mode with no valid single_image_path, return empty error
+            return [], "请选择有效的单张照片！"
+        # Normal multi-photo mode: use folder
         folder = self.config.get('input_folder', '')
         if not folder or not os.path.isdir(folder):
             return [], "请输入有效的图片来源！"
@@ -253,10 +269,11 @@ class FilmProcessor:
         try:
             is_120 = (config['film_format'] == "120")
             batch_enabled = config.get('batch_export_enabled', False)
+            single_photo_mode = config.get('single_photo_mode', False)
 
             # Single-photo mode: compress layout to one column so canvas
             # is only as wide as the frame itself
-            if len(files) == 1 and config.get('single_photo_mode', False):
+            if len(files) == 1 and single_photo_mode:
                 config['columns'] = 1
 
             # ---- 图片预处理（只做一次） ----
@@ -270,6 +287,65 @@ class FilmProcessor:
                 return "错误：所有图片处理失败。"
 
             # ---- 渲染 ----
+            # Handle single-photo batch export: render each image as a separate film strip
+            if single_photo_mode and len(files) > 1:
+                # Single-photo batch: each image gets its own output
+                results = []
+                styles = [config.get('render_style', 'lightbox')] if not batch_enabled else list(STYLE_COLORS.keys())
+
+                for img_idx, img in enumerate(processed_imgs):
+                    if self.is_cancelled:
+                        return "已取消"
+
+                    # Update progress
+                    total_steps = len(styles) if batch_enabled else 1
+                    base_pct = 50 + (img_idx / len(processed_imgs)) * 40
+
+                    for style_idx, style in enumerate(styles):
+                        if self.is_cancelled:
+                            return "已取消"
+
+                        batch_config = dict(config)
+                        batch_config['render_style'] = style
+                        batch_config['single_photo_mode'] = True  # Ensure single-photo mode is set
+                        batch_config['output_no_open'] = True  # Skip auto-open folder during batch single-photo export
+
+                        # Generate output filename for this image
+                        output_file = config.get('output_file', 'filmsheet_output.jpg')
+                        base_name = os.path.splitext(output_file)[0]
+                        ext = output_file.lower().split('.')[-1] if '.' in output_file else 'jpg'
+                        # Add style suffix when batch exporting multiple styles
+                        style_suffix = f"_{'light' if style == 'lightbox' else 'contact'}" if batch_enabled else ""
+                        output_name = f"{base_name}_single{style_suffix}_{img_idx + 1}.{ext}"
+                        output_path = os.path.join(os.path.dirname(config.get('output_path', '.')), output_name)
+                        batch_config['output_path'] = output_path
+
+                        # Create a processor for this single image
+                        single_img = [img]
+                        batch_proc = FilmProcessor(batch_config)
+                        batch_proc.images = single_img
+                        batch_proc.is_cancelled = self.is_cancelled
+
+                        # Progress callback for this image
+                        def single_status(msg):
+                            status_callback(msg)
+                        def single_progress(val, msg):
+                            progress_callback(min(base_pct + (style_idx / total_steps) * 10, 100), f"单张渲染[{style}]: {msg}")
+
+                        if not is_120:
+                            result = batch_proc._render_135(single_img, single_status, single_progress)
+                        else:
+                            result = batch_proc._render_120(single_img, single_status, single_progress)
+                        results.append(result)
+
+                if all(r == "success" for r in results):
+                    return "success"
+                elif "已取消" in results:
+                    return "已取消"
+                else:
+                    return "; ".join(r for r in results if r != "success")
+
+            # Normal multi-photo or single-image rendering
             if batch_enabled:
                 styles = list(STYLE_COLORS.keys())
             else:

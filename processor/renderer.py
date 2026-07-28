@@ -401,6 +401,16 @@ class BaseRenderer:
     def _save_output(self, canvas):
         if not self.config.get("output_path"):
             return  # API/headless mode: no file I/O
+
+        # Skip auto-open folder flag for batch single-photo exports
+        if self.config.get('output_no_open', False):
+            out_path = self.config["output_path"]
+            if out_path.lower().endswith('.png'):
+                canvas.save(out_path, compress_level=1)
+            else:
+                canvas.save(out_path, quality=self.config['quality'], optimize=True)
+            return
+
         from utils.helpers import open_folder
         self._status("正在保存文件...")
         out_path = self.config["output_path"]

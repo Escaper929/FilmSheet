@@ -32,6 +32,9 @@ class Renderer135(BaseRenderer):
         cols = self.config['columns']
         if self.config.get('single_photo_mode', False):
             cols = 1
+            # In single-photo mode, set spacing to 0 to avoid gaps between perforations
+            # and the image edge horizontally.
+            spacing = 0
         rows = math.ceil(len(self.images) / cols)
 
         sub_format = self.config.get('sub_format', '标准 36×24')
@@ -39,6 +42,9 @@ class Renderer135(BaseRenderer):
             sub_format, (36, 24, 8))
 
         scale_factor = thumb_w / frame_w_mm
+
+        # Use standard strip height for multi-photo and single-photo modes
+        # (compact vertical layout can be a separate feature option)
         strip_h = int(35.0 * scale_factor)
         bag_gap = int(50 * thumb_w / 400)
 
@@ -46,16 +52,15 @@ class Renderer135(BaseRenderer):
         common = self._calc_common_layout(
             thumb_w, spacing, cols, rows, strip_h, bag_gap, base_scale)
 
+        frame_w_px = int(frame_w_mm * scale_factor)
+
         # Perforation type (needed for layout and _draw_performations fallback)
         perf_type = self.engine.determine_perf_type(
             self.config.get('info_film', ''),
             self.config.get('perf_mode', 'Auto'))
 
-        # frame_w_px is needed before the single-image block below
-        frame_w_px = int(frame_w_mm * scale_factor)
-
         # Single-column mode or single_photo_mode: adjust perforation count
-        # based on sub-format, but keep total width from normal layout calculation.
+        # based on sub-format, and adjust layout for single-photo mode.
         if cols == 1 or self.config.get('single_photo_mode', False):
             pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
             pitch_px = int(pitch_mm * scale_factor)
@@ -66,7 +71,23 @@ class Renderer135(BaseRenderer):
                 num_perfs = 14
             common['_single_photo'] = True
             common['_num_perfs'] = num_perfs  # Store for perforation drawing
-            # Note: Do not override common['total_w']; keep the value from _calc_common_layout
+            # In single-photo mode, adjust layout for symmetric, compact film strip
+            if self.config.get('single_photo_mode', False):
+                margin_per_side = 10  # pixels of black film base on each side
+                common['total_w'] = frame_w_px + 2 * margin_per_side
+                common['content_w'] = frame_w_px
+                common['side_margin'] = margin_per_side
+                # Remove top/bottom margins to show only the film strip (no extra whitespace)
+                common['top_area_height'] = 0
+                common['bottom_margin'] = 0
+                common['top_margin'] = 0
+                # Recalculate total height: should be just the strip height for single row
+                common['total_h'] = common['strip_h']
+
+        # Calculate frame_top_offset to center image vertically in the film strip
+        # This uses the standard offset based on 35mm film width and 24mm image height.
+        frame_h_px = int(frame_h_mm * scale_factor)
+        frame_top_offset_px = int((35.0 - frame_h_mm) / 2.0 * scale_factor)
 
         # 135-specific layout values
         common.update({
@@ -77,8 +98,8 @@ class Renderer135(BaseRenderer):
             'base_scale': base_scale,
             # Perforation dimensions
             'perf_center_offset_px': int((2.01 + 2.794 / 2.0) * scale_factor),
-            'frame_top_offset_px': int((35.0 - 24.0) / 2.0 * scale_factor),
-            'frame_h_px': int(frame_h_mm * scale_factor),
+            'frame_top_offset_px': frame_top_offset_px,
+            'frame_h_px': frame_h_px,
             'frame_w_px': frame_w_px,
             'perf_h_px': int(2.794 * scale_factor),
             'perf_w_ks_px': int(1.981 * scale_factor),
@@ -265,11 +286,12 @@ class Renderer135(BaseRenderer):
         side_margin = layout['side_margin'] * scale
         spacing = layout['spacing'] * scale
         frame_w = layout['frame_w_px'] * scale
-        # In single-photo mode, image is centered in the canvas; use that same center
+        # In single-photo mode, image is centered in the film strip; use that same center
         cols = layout.get('cols', 1)
         if cols == 1:
-            total_w = layout['big_total_w']
-            cx = int((total_w - frame_w) / 2 + frame_w // 2)
+            # Use total width for centering to align with perforations
+            total_width = layout['big_total_w']
+            cx = int(total_width / 2)
         else:
             cx = side_margin + spacing + frame_w // 2
 
@@ -305,12 +327,18 @@ class Renderer135(BaseRenderer):
         big_total_w = layout['big_total_w']
 
         if is_single:
-            # Center-aligned: spread evenly across canvas, not via range() offset.
+            # For single-photo mode, place perforations evenly within the film strip area
+            # (from side_margin to side_margin + content_width), with equal margins on both sides.
             pitch_px_aa = int(pitch_px)
             num_perfs = layout.get('_num_perfs', 10)
-            # For N perfs with span (N-1)*pitch: gap from edge to first perf center
-            gap = (big_total_w - (num_perfs - 1) * pitch_px_aa) // 2
-            perf_cx_positions = [gap + i * pitch_px_aa for i in range(num_perfs)]
+            content_width = layout['content_w'] * scale
+            side_margin_val = layout['side_margin'] * scale
+            # Calculate symmetric spacing within content area
+            total_span = (num_perfs - 1) * pitch_px_aa
+            gap_exact = (content_width - total_span) / 2.0
+            gap_left = int(round(gap_exact))
+            # Perforation centers start from side_margin + gap_left
+            perf_cx_positions = [side_margin_val + gap_left + i * pitch_px_aa for i in range(num_perfs)]
         else:
             gap = int(25 * scale)
             perf_cx_positions = list(range(gap, big_total_w - gap, int(pitch_px)))
@@ -355,8 +383,10 @@ class Renderer135(BaseRenderer):
         # from each outermost perforation to the image edge is equal (symmetric).
         cols = layout['cols']
         if cols == 1:
-            total_w = layout['big_total_w']
-            x_pos = int((total_w - frame_w) / 2)
+            # Center image on the film strip using total canvas width
+            total_width = layout['big_total_w']
+            frame_w = layout['frame_w_px'] * scale
+            x_pos = int((total_width - frame_w) / 2)
             y_img_top = y1 + frame_top_offset
             placed_img = self.processor.cover_resize_crop(
                 self.images[img_idx], frame_w, frame_h)

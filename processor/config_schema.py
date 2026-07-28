@@ -81,6 +81,11 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     # Batch / watermark
     'batch_export_enabled': {"type": "bool", "default": False},
     'signature':       {"type": "string", "default": ""},
+
+    # Single photo mode enhancements
+    'perf_symmetry': {"type": "int", "default": 0, "range": (-10, 10)},
+    'edge_text_offset': {"type": "int", "default": 0, "range": (-20, 20)},
+    'edge_text_opacity': {"type": "int", "default": 100, "range": (0, 100)},
 }
 
 # Output path is computed, not stored in config

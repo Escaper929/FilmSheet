@@ -3,6 +3,7 @@
 import os
 import sys
 import threading
+import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image
@@ -51,7 +52,9 @@ class App:
         }
 
         self.vars['single_photo_mode'] = tk.BooleanVar(value=False)
-        self.vars['single_image_path'] = tk.StringVar()
+        self.single_image_files = []  # New: store file paths directly (list, not StringVar)
+        # Keep single_image_path StringVar for compatibility with FilmProcessor's _resolve_image_list()
+        self.vars['single_image_path'] = tk.StringVar(value="")
 
         for key in LABEL_MAP:
             self.vars[f'info_{key}'] = tk.StringVar()
@@ -379,6 +382,7 @@ class App:
         'pack_size', 'pack_border_stroke', 'processing_mode', 'thumb_width', 'columns',
         'spacing', 'force_landscape', 'perf_mode', 'output_format', 'quality',
         'signature', 'batch_export_enabled', 'edge_text',
+        'single_photo_mode',
     ]
 
     def _refresh_tmpl_combo(self):
@@ -538,16 +542,27 @@ class App:
 
     def browse_input(self):
         if self.vars['single_photo_mode'].get():
+            # In single-photo mode, allow selecting multiple files for batch single-photo export
             f = filedialog.askopenfilename(
-                filetypes=[("图片文件", "*.jpg *.jpeg *.png *.tiff *.bmp")]
+                filetypes=[("图片文件", "*.jpg *.jpeg *.png *.tiff *.bmp")],
+                multiple=True  # Allow multiple file selection
             )
             if f:
-                self.vars['single_image_path'].set(f)
-                self.vars['input_folder'].set(os.path.dirname(f))
-                base = os.path.splitext(os.path.basename(f))[0]
-                ext = os.path.splitext(f)[1] or '.jpg'
-                self.vars['output_file'].set(base + '_filmsheet' + ext)
+                # Store files directly in a list (not via StringVar)
+                self.single_image_files = list(f)  # Convert tuple to list
+                # Store as JSON string in single_image_path for compatibility with _resolve_image_list
+                self.vars['single_image_path'].set(json.dumps(self.single_image_files))
+                # Set input_folder to the directory of the first selected file
+                self.vars['input_folder'].set(os.path.dirname(f[0]))
+                # Use original filename + "_filmsheet" as the default output name
+                basename = os.path.basename(f[0])
+                name, ext = os.path.splitext(basename)
+                output_name = f"{name}_filmsheet{ext}"
+                self.vars['output_file'].set(output_name)
         else:
+            # Clear single photo files when not in single-photo mode
+            self.single_image_files = []
+            self.vars['single_image_path'].set('')
             folder = filedialog.askdirectory()
             if folder:
                 self.vars['input_folder'].set(folder)
@@ -561,10 +576,13 @@ class App:
                 messagebox.showwarning("提示", "请先选择图片来源文件夹！")
                 return
         else:
-            sf = self.vars['single_image_path'].get()
-            if not sf or not os.path.isfile(sf):
+            # Use the stored file list
+            files = self.single_image_files
+            if not files:
                 messagebox.showwarning("提示", "请先选择要导出的照片！")
                 return
+            # Use the first file for preview
+            sf = files[0]
             input_dir = os.path.dirname(sf)
 
         self.status_lbl.config(text="正在预览...", foreground="gray")
@@ -639,11 +657,13 @@ class App:
                 messagebox.showerror("Error", "请选择有效的图片来源文件夹！")
                 return
         else:
-            single_file = self.vars['single_image_path'].get()
-            if not single_file or not os.path.isfile(single_file):
+            # Use the stored file list instead of StringVar
+            files = self.single_image_files
+            if not files:
                 messagebox.showerror("Error", "请选择要导出的单张照片！")
                 return
-            input_dir = os.path.dirname(single_file)
+            # Get directory from first file
+            input_dir = os.path.dirname(files[0])
             self.vars['input_folder'].set(input_dir)
 
         output_name = self.vars['output_file'].get()

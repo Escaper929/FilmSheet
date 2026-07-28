@@ -42,6 +42,9 @@ class Renderer120(BaseRenderer):
         thumb_w = self.config['thumb_width']
         spacing = int(self.config['spacing'] * thumb_w / 400)
         cols = self.config['columns']
+        # In single-photo mode (one column), set spacing to 0 to avoid gaps
+        if cols == 1:
+            spacing = 0
         rows = math.ceil(len(self.images) / cols)
 
         sub_format = self.config.get('sub_format', '66')
@@ -62,6 +65,20 @@ class Renderer120(BaseRenderer):
 
         common = self._calc_common_layout(
             thumb_w, spacing, cols, rows, strip_h, bag_gap, base_scale)
+
+        # Single-photo mode: apply compact layout to match 135 single-photo effect
+        if cols == 1:
+            margin_per_side = 10  # pixels of black film base on each side
+            # Adjust layout parameters for compact, centered single image
+            common['side_margin'] = margin_per_side
+            common['content_w'] = thumb_w  # content area equals image width
+            common['total_w'] = thumb_w + 2 * margin_per_side
+            # Remove top/bottom whitespace (info block, extra margins)
+            common['top_area_height'] = 0
+            common['bottom_margin'] = 0
+            common['top_margin'] = 0
+            # Total height is just the strip height (one row)
+            common['total_h'] = common['strip_h']
 
         common.update({
             'target_ratio': target_ratio,
@@ -85,6 +102,7 @@ class Renderer120(BaseRenderer):
         font = self.processor._load_font(font_size)
         if not font:
             return
+
         color = self.colors["text_color"]
 
         # --- Top edge: centered, brand + film type ---
@@ -95,7 +113,17 @@ class Renderer120(BaseRenderer):
         top_line = "  ".join(top_parts)
 
         border_mid = int(IMAGE_BORDER_TOP_BOTTOM_MM * scale_factor * 0.6 * aa_scale)
-        draw.text((total_w // 2, y1 + border_mid), top_line, fill=color, font=font, anchor="mm")
+        # Determine horizontal center based on mode
+        cols = layout['cols']
+        if cols == 1:
+            # Single-photo mode: center over the image/content area
+            content_width = layout['content_w'] * aa_scale
+            side_margin = layout['side_margin'] * aa_scale
+            x_center = int(side_margin + content_width / 2.0)
+        else:
+            # Multi-photo mode: center over the full canvas
+            x_center = total_w // 2
+        draw.text((x_center, y1 + border_mid), top_line, fill=color, font=font, anchor="mm")
 
         # --- Bottom edge: fixed at image centers + separator triangles ---
         edge_y_bottom = y2 - border_mid
@@ -149,14 +177,27 @@ class Renderer120(BaseRenderer):
         img_h = layout['img_h'] * scale
         image_border = layout['image_border'] * scale
 
-        start_col = 0
-        for col in range(start_col, layout['cols']):
-            if img_idx >= len(self.images):
-                break
-            x_pos = side_margin + spacing + col * (thumb_w + spacing)
-            # Center image vertically on the strip (2.5mm border top/bottom)
+        cols = layout['cols']
+        if cols == 1:
+            # Single-photo mode: center image within the content area
+            content_width = layout['content_w'] * scale
+            frame_w = thumb_w
+            x_pos = int((content_width - frame_w) / 2 + side_margin)
             y_img_top = y1 + image_border
             placed_img = self.processor.cover_resize_crop(
-                self.images[img_idx], thumb_w, img_h)
-            canvas.paste(placed_img, (int(x_pos), int(y_img_top)))
+                self.images[img_idx], frame_w, img_h)
+            canvas.paste(placed_img, (x_pos, int(y_img_top)))
             img_idx += 1
+        else:
+            # Multi-photo mode: place images in sequence
+            start_col = 0
+            for col in range(start_col, layout['cols']):
+                if img_idx >= len(self.images):
+                    break
+                x_pos = side_margin + spacing + col * (thumb_w + spacing)
+                # Center image vertically on the strip (2.5mm border top/bottom)
+                y_img_top = y1 + image_border
+                placed_img = self.processor.cover_resize_crop(
+                    self.images[img_idx], thumb_w, img_h)
+                canvas.paste(placed_img, (int(x_pos), int(y_img_top)))
+                img_idx += 1
