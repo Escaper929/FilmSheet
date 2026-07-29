@@ -310,6 +310,22 @@ class App:
         lang_combo.pack(side=tk.LEFT)
         lang_combo.bind("<<ComboboxSelected>>", self._update_info_labels)
 
+        # Load field histories from config into instance attributes
+        field_keys = ['roll', 'camera', 'film', 'shoot_date', 'dev_date', 'proc', 'lab', 'scanner']
+        cfg = load_config()
+        for key in field_keys:
+            hist_key = f"history_{key}"
+            if not hasattr(self, hist_key):
+                vals = cfg.get(hist_key, [])
+                # Deduplicate while preserving order
+                seen = set()
+                unique_vals = []
+                for v in vals:
+                    if v not in seen:
+                        seen.add(v)
+                        unique_vals.append(v)
+                setattr(self, hist_key, unique_vals)
+
         gui_layout = [
             [('roll', 1, 0), ('camera', 1, 2), ('film', 1, 4)],
             [('shoot_date', 2, 0), ('dev_date', 2, 2), (None, 2, 4)],
@@ -323,9 +339,17 @@ class App:
                 lbl.grid(row=r, column=c, sticky=tk.W, padx=5, pady=2)
                 self.info_labels[key] = lbl
                 entry_w = 10 if key == 'roll' else 14
-                ttk.Entry(info_frame, textvariable=self.vars[f'info_{key}'], width=entry_w).grid(
-                    row=r, column=c+1, sticky=tk.EW, padx=5, pady=2
-                )
+                # Create Combobox for all fields with history support
+                hist_key = f"history_{key}"
+                combo_history = getattr(self, hist_key, [])
+                combo = ttk.Combobox(info_frame, textvariable=self.vars[f'info_{key}'],
+                                     values=combo_history, state="normal", width=entry_w)
+                combo.grid(row=r, column=c+1, sticky=tk.EW, padx=5, pady=2)
+                # Set initial value
+                current_val = self.vars[f'info_{key}'].get()
+                combo.set(current_val)
+                # Bind Enter key to save history
+                combo.bind("<Return>", lambda e, k=key: self.update_field_history(k))
 
         # ---- 输出选项 ----
         out_frame = ttk.LabelFrame(main_frame, text="输出选项", padding="10")
@@ -392,6 +416,9 @@ class App:
         'spacing', 'force_landscape', 'perf_mode', 'output_format', 'quality',
         'signature', 'batch_export_enabled', 'edge_text',
         'single_photo_mode', 'single_photo_show_extra',
+        # Info fields
+        'info_roll', 'info_camera', 'info_film', 'info_shoot_date',
+        'info_dev_date', 'info_proc', 'info_lab', 'info_scanner', 'info_lang',
     ]
 
     def _refresh_tmpl_combo(self):
@@ -548,6 +575,30 @@ class App:
             self.q_label.grid(row=0, column=2, sticky=tk.W, padx=(20,0))
             self.q_scale.grid(row=0, column=3, sticky=tk.W)
             self.q_val.grid(row=0, column=4, sticky=tk.W)
+
+    def update_field_history(self, key):
+        """Handle Enter key press on any info field - update its history."""
+        field_value = self.vars[f'info_{key}'].get()
+        if not field_value:
+            return
+        # Get or initialize history for this field
+        hist_key = f"history_{key}"
+        if not hasattr(self, hist_key):
+            cfg = load_config()
+            setattr(self, hist_key, cfg.get(hist_key, []))
+        hist = getattr(self, hist_key)
+        # Add value to history if not already present (and not empty)
+        if field_value not in hist:
+            hist.insert(0, field_value)  # Add at top
+            # Limit history size to 30
+            max_hist = 30
+            if len(hist) > max_hist:
+                hist = hist[:max_hist]
+            setattr(self, hist_key, hist)
+        # Save updated history to config
+        cfg = load_config()
+        cfg[hist_key] = hist
+        save_config(cfg)
 
     def browse_input(self):
         if self.vars['single_photo_mode'].get():
