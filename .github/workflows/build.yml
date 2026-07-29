@@ -14,11 +14,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 Rosetta（确保 x86_64 可用）
-        run: |
-          sudo /usr/sbin/rosetta install --accept
-          sleep 5
-
+      # Rosetta 在 GitHub Actions macOS runner 上默认已安装，无需手动安装
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
@@ -27,7 +23,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
+          pip install pillow ttkthemes pyinstaller
 
       - name: 获取版本号
         id: version
@@ -43,7 +39,7 @@ jobs:
       # ========== 通过 Rosetta 2 转译构建 Intel 版本 ==========
       - name: 打包 Intel Mac 应用
         run: |
-          arch -x86_64 pyinstaller --onedir --windowed --name "FilmSheet" main.py
+          arch -x86_64 pyinstaller --windowed --name "FilmSheet" main.py --clean
 
       - name: 压缩 Intel 产物
         run: |
@@ -71,7 +67,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
+          pip install pillow ttkthemes pyinstaller
 
       - name: 获取版本号
         id: version
@@ -84,10 +80,10 @@ jobs:
         run: |
           echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
-      # ========== Apple Silicon 原生构建 ==========
+      # ========== Apple Silicon 原生构建（无需 arch 切换）==========
       - name: 打包 Apple Silicon Mac 应用
         run: |
-          arch arm64 pyinstaller --onedir --windowed --name "FilmSheet" main.py
+          pyinstaller --windowed --name "FilmSheet" main.py --clean
 
       - name: 压缩 Apple Silicon 产物
         run: |
@@ -115,7 +111,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
+          pip install pillow ttkthemes pyinstaller
 
       - name: 获取版本号
         id: version
@@ -130,12 +126,11 @@ jobs:
 
       - name: 打包 Windows 可执行文件
         run: |
-          pyinstaller --onefile --windowed --name "FilmSheet" main.py
+          pyinstaller --onefile --windowed --name "FilmSheet" main.py --clean
 
       - name: 压缩 .exe
         run: |
-          dir dist
-          Compress-Archive -Path "dist/FilmSheet.exe" -DestinationPath "FilmSheet-Windows.zip"
+            Compress-Archive -Path "dist/FilmSheet.exe" -DestinationPath "FilmSheet-Windows.zip"
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4
