@@ -7,57 +7,8 @@ on:
   workflow_dispatch:   # 允许手动触发
 
 jobs:
-  # ========== Intel (x86_64) Mac 打包 ==========
-  build-macos-intel:
-    runs-on: macos-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 安装 Rosetta（确保 x86_64 可用）
-        run: |
-          sudo /usr/sbin/rosetta install --accept
-          sleep 5
-
-      - name: 设置 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: 安装依赖
-        run: |
-          pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
-
-      - name: 获取版本号
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: 更新版本号文件
-        env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
-        shell: bash
-        run: |
-          echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
-
-      # ========== 通过 Rosetta 2 转译构建 Intel 版本 ==========
-      - name: 打包 Intel Mac 应用
-        run: |
-          arch -x86_64 pyinstaller --onedir --windowed --name "FilmSheet" main.py
-
-      - name: 压缩 Intel 产物
-        run: |
-          cd dist
-          zip -r ../FilmSheet-Intel-macOS.zip FilmSheet.app
-
-      - name: 上传 Intel 产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: FilmSheet-Intel-macOS
-          path: FilmSheet-Intel-macOS.zip
-
-  # ========== Apple Silicon (arm64) Mac 打包 ==========
-  build-macos-applesilicon:
+  # ========== macOS 打包（通用版，arm64 架构，Intel Mac 可通过 Rosetta 运行）==========
+  build-macos:
     runs-on: macos-latest
     steps:
       - name: 检出代码
@@ -71,7 +22,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
+          pip install pillow ttkthemes pyinstaller
 
       - name: 获取版本号
         id: version
@@ -84,17 +35,17 @@ jobs:
         run: |
           echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
-      # ========== Apple Silicon 原生构建 ==========
-      - name: 打包 Apple Silicon Mac 应用
+      # ========== 原生构建 macOS 应用（arm64）==========
+      - name: 打包 macOS 应用
         run: |
-          arch arm64 pyinstaller --onedir --windowed --name "FilmSheet" main.py
+          pyinstaller --windowed --name "FilmSheet" main.py --clean
 
-      - name: 压缩 Apple Silicon 产物
+      - name: 压缩 macOS 产物
         run: |
           cd dist
           zip -r ../FilmSheet-macOS.zip FilmSheet.app
 
-      - name: 上传 Apple Silicon 产物
+      - name: 上传 macOS 产物
         uses: actions/upload-artifact@v4
         with:
           name: FilmSheet-macOS
@@ -115,7 +66,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install pillow pyinstaller ttkthemes
+          pip install pillow ttkthemes pyinstaller
 
       - name: 获取版本号
         id: version
@@ -130,12 +81,11 @@ jobs:
 
       - name: 打包 Windows 可执行文件
         run: |
-          pyinstaller --onefile --windowed --name "FilmSheet" main.py
+          pyinstaller --onefile --windowed --name "FilmSheet" main.py --clean
 
       - name: 压缩 .exe
         run: |
-          dir dist
-          Compress-Archive -Path "dist/FilmSheet.exe" -DestinationPath "FilmSheet-Windows.zip"
+            Compress-Archive -Path "dist/FilmSheet.exe" -DestinationPath "FilmSheet-Windows.zip"
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4
@@ -145,17 +95,11 @@ jobs:
 
   # ========== 发布到 GitHub Releases ==========
   release:
-    needs: [build-macos-intel, build-macos-applesilicon, build-windows]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: 下载 Intel 产物
-        uses: actions/download-artifact@v4
-        with:
-          name: FilmSheet-Intel-macOS
-          path: artifacts
-
-      - name: 下载 Apple Silicon 产物
+      - name: 下载 macOS 产物
         uses: actions/download-artifact@v4
         with:
           name: FilmSheet-macOS
@@ -175,7 +119,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/FilmSheet-Intel-macOS.zip
             artifacts/FilmSheet-macOS.zip
             artifacts/FilmSheet-Windows.zip
           tag_name: ${{ github.ref_name }}
