@@ -7,7 +7,7 @@ import time
 import threading
 import subprocess
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from engine.film_engine import Strict135FilmEngine
@@ -416,13 +416,13 @@ class FilmProcessor:
                         processing_mode, force_landscape
                     )
                     future_to_file[future] = f
-                imgs = []
-                for i, future in enumerate(as_completed(future_to_file)):
+                imgs = [None] * len(files)
+                for i, future in enumerate(future_to_file.keys()):
                     if self.is_cancelled:
                         return None
                     img = future.result()
                     if img:
-                        imgs.append(img)
+                        imgs[i] = img
                     progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
             return imgs
         else:
@@ -437,13 +437,13 @@ class FilmProcessor:
                     executor.submit(_process_135_image, f, thumb_w, processing_mode, force_landscape, cfg.get('sub_format', '标准 36×24')): f
                     for f in files
                 }
-                imgs = []
-                for i, future in enumerate(as_completed(future_to_file)):
+                imgs = [None] * len(files)
+                for i, future in enumerate(future_to_file.keys()):
                     if self.is_cancelled:
                         return None
                     img = future.result()
                     if img:
-                        imgs.append(img)
+                        imgs[i] = img
                     progress_callback(int((i + 1) / total_files * 50), f"处理图片: {i+1}/{total_files}")
             return imgs
 
@@ -472,34 +472,34 @@ class FilmProcessor:
 
             if is_120:
                 target_ratio = FILM_FORMAT_RATIOS.get(self.config['sub_format'], 1.0)
-                processed_imgs = []
+                processed_imgs = [None] * len(files)
                 with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
                     futures = {
-                        executor.submit(self._process_120_image, f, target_ratio, 80): f
-                        for f in files
+                        executor.submit(self._process_120_image, f, target_ratio, 80): i
+                        for i, f in enumerate(files)
                     }
-                    for future in as_completed(futures):
+                    for future in futures:
                         if self.is_cancelled:
                             return None, "已取消"
                         img = future.result()
-                        if img:
-                            processed_imgs.append(img)
+                        processed_imgs[futures[future]] = img
+                processed_imgs = [img for img in processed_imgs if img is not None]
                 if not processed_imgs:
                     return None, "所有图片处理失败"
                 return self._render_preview_120(processed_imgs), None
             else:
-                processed_imgs = []
+                processed_imgs = [None] * len(files)
                 with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as executor:
                     futures = {
-                        executor.submit(self.process_single_image, f, 80): f
-                        for f in files
+                        executor.submit(self.process_single_image, f, 80): i
+                        for i, f in enumerate(files)
                     }
-                    for future in as_completed(futures):
+                    for future in futures:
                         if self.is_cancelled:
                             return None, "已取消"
                         img = future.result()
-                        if img:
-                            processed_imgs.append(img)
+                        processed_imgs[futures[future]] = img
+                processed_imgs = [img for img in processed_imgs if img is not None]
                 if not processed_imgs:
                     return None, "所有图片处理失败"
                 return self._render_preview_135(processed_imgs), None
