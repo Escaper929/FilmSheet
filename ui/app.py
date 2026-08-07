@@ -646,14 +646,16 @@ class App:
             input_dir = os.path.dirname(sf)
 
         self.status_lbl.config(text="正在预览...", foreground="gray")
-        self.root.update()
-
         config = {k: v.get() if hasattr(v, 'get') else v for k, v in self.vars.items()}
         config['output_path'] = os.path.join(input_dir, 'preview_temp.jpg')
+        threading.Thread(target=self._run_preview_worker, args=(config,), daemon=True).start()
 
+    def _run_preview_worker(self, config):
         proc = FilmProcessor(config)
         img, error = proc.render_preview()
+        self.root.after(0, self._show_preview_result, img, error)
 
+    def _show_preview_result(self, img, error):
         if error:
             self.status_lbl.config(text="预览失败", foreground="red")
             messagebox.showerror("预览失败", error)

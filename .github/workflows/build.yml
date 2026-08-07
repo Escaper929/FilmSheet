@@ -1,14 +1,40 @@
 name: Build FilmSheet
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
+    branches:
+      - main
     tags:
       - 'v*'           # 推送 v1.0, v1.0.1 等标签时触发
   workflow_dispatch:   # 允许手动触发
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r api/requirements.txt
+
+      - name: Run core tests
+        run: python -m unittest tests.test_core tests.test_api -v
+
   # ========== macOS 打包（通用版，arm64 架构，Intel Mac 可通过 Rosetta 运行）==========
   build-macos:
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     steps:
       - name: 检出代码
@@ -53,6 +79,8 @@ jobs:
 
   # ========== Windows 打包 ==========
   build-windows:
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: windows-latest
     steps:
       - name: 检出代码

@@ -1,12 +1,8 @@
 services:
   filmsheet:
-    build: .
+    build:
+      context: ..
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./processor:/app/processor
-      - ./engine:/app/engine
-      - ./utils:/app/utils
-      - ./main.py:/app/main.py
-      - ./index.html:/app/index.html
     restart: unless-stopped

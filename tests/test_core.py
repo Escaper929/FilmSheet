@@ -38,6 +38,38 @@ from processor.config_schema import (
 from utils.helpers import STYLE_COLORS, FILM_FORMAT_RATIOS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS
 
 
+class _ImmediateFuture:
+    """Minimal Future substitute used to control completion order in tests."""
+
+    def __init__(self, result, index):
+        self._result = result
+        self.index = index
+
+    def result(self):
+        return self._result
+
+
+class _ImmediateExecutor:
+    """Executor substitute that eagerly runs submitted work."""
+
+    def __init__(self, *args, **kwargs):
+        self._index = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        pass
+
+    def submit(self, fn, *args, **kwargs):
+        future = _ImmediateFuture(fn(*args, **kwargs), self._index)
+        self._index += 1
+        return future
+
+
 # ====================================================================
 # Edge text tests
 # ====================================================================
@@ -200,8 +232,49 @@ class TestImagePipeline(unittest.TestCase):
     def test_process_120_image_645(self):
         """645 ratio is 1.25:1."""
         buf = self._make_test_image(500, 400)
-        result = process_120_image(io.BytesIO(buf.getvalue()), 1.25, 500, "positive", True)
+        result = process_120_image(io.BytesIO(buf.getvalue()), "645", 500, "positive", True)
         self.assertIsNotNone(result)
+
+
+# ====================================================================
+# Parallel processing order tests
+# ====================================================================
+
+class TestParallelProcessingOrder(unittest.TestCase):
+
+    @mock.patch("processor.film_processor._process_135_image", side_effect=lambda path, *_: path)
+    @mock.patch("processor.film_processor.as_completed", side_effect=lambda futures: sorted(futures, key=lambda future: future.index, reverse=True))
+    @mock.patch("processor.film_processor.ThreadPoolExecutor", _ImmediateExecutor)
+    def test_135_images_keep_input_order_when_futures_finish_out_of_order(self, _completed, _process):
+        from processor.film_processor import FilmProcessor
+
+        files = ["frame-01.jpg", "frame-02.jpg", "frame-03.jpg"]
+        processor = FilmProcessor({})
+        config = {
+            "thumb_width": 400,
+            "processing_mode": "positive",
+            "force_landscape": True,
+            "sub_format": "标准 36×24",
+        }
+
+        result = processor._process_images(files, False, len(files), config, lambda _: None, lambda *_: None)
+
+        self.assertEqual(result, files)
+
+    @mock.patch("processor.film_processor._process_120_image", side_effect=lambda _path, sub_format, *_: sub_format)
+    @mock.patch("processor.film_processor.as_completed", side_effect=lambda futures: list(futures))
+    @mock.patch("processor.film_processor.ThreadPoolExecutor", _ImmediateExecutor)
+    def test_120_preview_uses_the_selected_sub_format(self, _completed, _process):
+        from processor.film_processor import FilmProcessor
+
+        processor = FilmProcessor({"film_format": "120", "sub_format": "67"})
+        processor._resolve_image_list = mock.Mock(return_value=(["frame-01.jpg"], None))
+        processor._render_preview_120 = mock.Mock(side_effect=lambda images: images)
+
+        image, error = processor.render_preview()
+
+        self.assertIsNone(error)
+        self.assertEqual(image, ["67"])
 
 
 # ====================================================================

@@ -12,6 +12,21 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
+The API imports the shared rendering engine from the project root. Keep the
+`api` directory inside the FilmSheet repository when running it from source.
+
+For a public deployment, configure these environment variables:
+
+```bash
+FILMSHEET_API_KEY=choose-a-secret
+FILMSHEET_CORS_ORIGINS=https://your-web-app.example
+FILMSHEET_RATE_LIMIT_REQUESTS=20
+FILMSHEET_RATE_LIMIT_WINDOW_SECONDS=60
+```
+
+Clients then send the optional key as the `X-API-Key` request header. Pack
+images must be uploaded as `pack_image_file`; server file paths are rejected.
+
 ### Docker
 
 ```bash
@@ -60,7 +75,7 @@ docker run -d --name filmsheet \
 | `info_scanner` | string | "" | 扫描仪 |
 | `info_lang` | string | "en" | 标签语言：zh/en |
 | `edge_text` | string | "" | 自定义边字 |
-| `pack_image_path` | string | "" | 胶卷包装图路径 |
+| `pack_image_file` | file | - | 可选的胶卷包装图上传文件 |
 | `pack_position` | string | "left" | 包装图位置 |
 | `pack_border_stroke` | bool | true | 包装图描边 |
 | `pack_size` | int | 80 | 包装图大小百分比 |

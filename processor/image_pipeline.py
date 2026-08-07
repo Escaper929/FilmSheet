@@ -41,7 +41,7 @@ def process_135_image(
         Processed PIL Image, or None on failure.
     """
     try:
-        img = Image.open(filepath)
+        img = ImageOps.exif_transpose(Image.open(filepath))
         if img.mode != 'RGB':
             img = img.convert('RGB')
         if processing_mode == 'negative':
@@ -180,7 +180,7 @@ def process_120_image(
         Processed PIL Image, or None on failure.
     """
     try:
-        img = Image.open(filepath)
+        img = ImageOps.exif_transpose(Image.open(filepath))
         if img.mode != 'RGB':
             img = img.convert('RGB')
         if processing_mode == 'negative':
