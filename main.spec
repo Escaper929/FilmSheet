@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 a = Analysis(
     ['main.py'],
     pathex=['.', 'ui', 'processor', 'engine', 'utils', 'filmsheet'],
@@ -59,3 +58,18 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+
+import sys
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='FilmSheet.app',
+        icon=None,
+        bundle_identifier='com.filmsheet.app',
+        info_plist={
+            'CFBundleName': 'FilmSheet',
+            'CFBundleDisplayName': 'FilmSheet',
+            'CFBundleIdentifier': 'com.filmsheet.app',
+            'NSHighResolutionCapable': True,
+        },
+    )
