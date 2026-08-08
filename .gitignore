@@ -8,7 +8,6 @@ __pycache__/
 dist/
 build/
 *.app/
-*.spec
 .DS_Store
 Thumbs.db
 filmsheet_config.json
