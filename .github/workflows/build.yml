@@ -64,7 +64,25 @@ jobs:
       # ========== 原生构建 macOS 应用（arm64）==========
       - name: 打包 macOS 应用
         run: |
-          pyinstaller --windowed --name "FilmSheet" main.py --clean
+          pyinstaller --windowed --name "FilmSheet" main.py --clean \
+            --hidden-import=ui \
+            --hidden-import=ui.app \
+            --hidden-import=processor \
+            --hidden-import=processor.film_processor \
+            --hidden-import=processor.renderers_135 \
+            --hidden-import=processor.renderers_120 \
+            --hidden-import=processor.config_schema \
+            --hidden-import=processor.edge_text \
+            --hidden-import=processor.filename_utils \
+            --hidden-import=processor.image_pipeline \
+            --hidden-import=engine \
+            --hidden-import=engine.film_engine \
+            --hidden-import=utils \
+            --hidden-import=utils.helpers \
+            --hidden-import=filmsheet \
+            --hidden-import=filmsheet._version \
+            --hidden-import=PIL.ImageTk \
+            --hidden-import=ttkthemes
 
       - name: 压缩 macOS 产物
         run: |
@@ -109,7 +127,25 @@ jobs:
 
       - name: 打包 Windows 可执行文件
         run: |
-          pyinstaller --onefile --windowed --name "FilmSheet" main.py --clean
+          pyinstaller --onefile --windowed --name "FilmSheet" main.py --clean \
+            --hidden-import=ui \
+            --hidden-import=ui.app \
+            --hidden-import=processor \
+            --hidden-import=processor.film_processor \
+            --hidden-import=processor.renderers_135 \
+            --hidden-import=processor.renderers_120 \
+            --hidden-import=processor.config_schema \
+            --hidden-import=processor.edge_text \
+            --hidden-import=processor.filename_utils \
+            --hidden-import=processor.image_pipeline \
+            --hidden-import=engine \
+            --hidden-import=engine.film_engine \
+            --hidden-import=utils \
+            --hidden-import=utils.helpers \
+            --hidden-import=filmsheet \
+            --hidden-import=filmsheet._version \
+            --hidden-import=PIL.ImageTk \
+            --hidden-import=ttkthemes
 
       - name: 压缩 .exe
         run: |
