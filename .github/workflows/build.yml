@@ -90,10 +90,14 @@ jobs:
             dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet \
             dist/FilmSheet_x86.app/Contents/MacOS/FilmSheet \
             -output dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet
+          # 保留 arm64 版本的所有资源，只替换可执行文件
           rm -rf dist/FilmSheet.app
           mv dist/FilmSheet_arm64.app dist/FilmSheet.app
           # 移除 quarantine 属性，避免 Gatekeeper 拦截
           xattr -cr dist/FilmSheet.app
+          # 验证产物
+          echo "=== 合并结果 ==="
+          lipo -info dist/FilmSheet.app/Contents/MacOS/FilmSheet
 
       - name: 压缩 macOS 产物
         run: |
