@@ -63,6 +63,7 @@ jobs:
 
       # ========== 原生构建 macOS 应用（arm64）==========
       - name: 打包 macOS 应用
+        shell: bash
         run: |
           pyinstaller --windowed --name "FilmSheet" main.py --clean \
             --hidden-import=ui \
@@ -126,6 +127,7 @@ jobs:
           echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
       - name: 打包 Windows 可执行文件
+        shell: bash
         run: |
           pyinstaller --onefile --windowed --name "FilmSheet" main.py --clean \
             --hidden-import=ui \
