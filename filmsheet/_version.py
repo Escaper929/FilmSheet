@@ -1,4 +1,1 @@
-# -*- coding: utf-8 -*-
-"""Shared version string for the entire project."""
-
-__VERSION__: str = "1.19"
+__VERSION__: str = "1.27"
