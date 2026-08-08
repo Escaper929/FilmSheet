@@ -69,6 +69,12 @@ jobs:
           mv dist/FilmSheet.app dist/FilmSheet_arm64.app
 
       # ========== 通过 Rosetta 2 构建 x86_64 版本 ==========
+      - name: 安装 x86_64 依赖
+        shell: bash
+        run: |
+          # 强制重装 Pillow 的 x86_64 wheel（CI 的 arm64 Python 默认装了 arm64 版）
+          arch -x86_64 pip install --force-reinstall --no-cache-dir pillow ttkthemes pyinstaller
+
       - name: 打包 x86_64 macOS 应用
         shell: bash
         run: |
