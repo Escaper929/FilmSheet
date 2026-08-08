@@ -92,6 +92,8 @@ jobs:
             -output dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet
           rm -rf dist/FilmSheet.app
           mv dist/FilmSheet_arm64.app dist/FilmSheet.app
+          # 移除 quarantine 属性，避免 Gatekeeper 拦截
+          xattr -cr dist/FilmSheet.app
 
       - name: 压缩 macOS 产物
         run: |
