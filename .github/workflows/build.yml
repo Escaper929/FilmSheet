@@ -31,8 +31,8 @@ jobs:
       - name: Run core tests
         run: python -m unittest tests.test_core tests.test_api -v
 
-  # ========== macOS 打包（universal 二进制，同时支持 Intel 和 Apple Silicon）==========
-  build-macos:
+  # ========== macOS arm64 打包 ==========
+  build-macos-arm64:
     needs: test
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
@@ -61,54 +61,69 @@ jobs:
         run: |
           echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
-      # ========== 原生构建 arm64 版本 ==========
-      - name: 打包 arm64 macOS 应用
+      - name: 打包 macOS arm64 应用
         shell: bash
         run: |
           pyinstaller main.spec --clean
-          mv dist/FilmSheet.app dist/FilmSheet_arm64.app
-
-      # ========== 通过 Rosetta 2 构建 x86_64 版本 ==========
-      - name: 安装 x86_64 依赖
-        shell: bash
-        run: |
-          # 强制重装 Pillow 的 x86_64 wheel（CI 的 arm64 Python 默认装了 arm64 版）
-          arch -x86_64 pip install --force-reinstall --no-cache-dir pillow ttkthemes pyinstaller
-
-      - name: 打包 x86_64 macOS 应用
-        shell: bash
-        run: |
-          arch -x86_64 pyinstaller main.spec --clean
-          mv dist/FilmSheet.app dist/FilmSheet_x86.app
-
-      # ========== 合并为 universal binary ==========
-      - name: 合并为 universal 二进制
-        shell: bash
-        run: |
-          # 用 arm64 的 .app 为基础，替换可执行文件为 universal 版本
-          lipo -create \
-            dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet \
-            dist/FilmSheet_x86.app/Contents/MacOS/FilmSheet \
-            -output dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet
-          # 保留 arm64 版本的所有资源，只替换可执行文件
-          rm -rf dist/FilmSheet.app
-          mv dist/FilmSheet_arm64.app dist/FilmSheet.app
-          # 移除 quarantine 属性，避免 Gatekeeper 拦截
           xattr -cr dist/FilmSheet.app
-          # 验证产物
-          echo "=== 合并结果 ==="
-          lipo -info dist/FilmSheet.app/Contents/MacOS/FilmSheet
 
       - name: 压缩 macOS 产物
         run: |
           cd dist
-          zip -r ../FilmSheet-macOS.zip FilmSheet.app
+          zip -r ../FilmSheet-macOS-arm64.zip FilmSheet.app
 
-      - name: 上传 macOS 产物
+      - name: 上传 macOS arm64 产物
         uses: actions/upload-artifact@v4
         with:
-          name: FilmSheet-macOS
-          path: FilmSheet-macOS.zip
+          name: FilmSheet-macOS-arm64
+          path: FilmSheet-macOS-arm64.zip
+
+  # ========== macOS x86_64 打包 ==========
+  build-macos-x86:
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-13  # Intel Mac runner
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install pillow ttkthemes pyinstaller
+
+      - name: 获取版本号
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: 更新版本号文件
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        shell: bash
+        run: |
+          echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
+
+      - name: 打包 macOS x86_64 应用
+        shell: bash
+        run: |
+          pyinstaller main.spec --clean
+          xattr -cr dist/FilmSheet.app
+
+      - name: 压缩 macOS 产物
+        run: |
+          cd dist
+          zip -r ../FilmSheet-macOS-x86.zip FilmSheet.app
+
+      - name: 上传 macOS x86_64 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmSheet-macOS-x86
+          path: FilmSheet-macOS-x86.zip
 
   # ========== Windows 打包 ==========
   build-windows:
@@ -157,14 +172,20 @@ jobs:
 
   # ========== 发布到 GitHub Releases ==========
   release:
-    needs: [build-macos, build-windows]
+    needs: [build-macos-arm64, build-macos-x86, build-windows]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: 下载 macOS 产物
+      - name: 下载 macOS arm64 产物
         uses: actions/download-artifact@v4
         with:
-          name: FilmSheet-macOS
+          name: FilmSheet-macOS-arm64
+          path: artifacts
+
+      - name: 下载 macOS x86_64 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: FilmSheet-macOS-x86
           path: artifacts
 
       - name: 下载 Windows 产物
@@ -181,7 +202,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/FilmSheet-macOS.zip
+            artifacts/FilmSheet-macOS-arm64.zip
+            artifacts/FilmSheet-macOS-x86.zip
             artifacts/FilmSheet-Windows.zip
           tag_name: ${{ github.ref_name }}
           draft: false
