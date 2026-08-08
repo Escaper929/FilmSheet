@@ -31,7 +31,7 @@ jobs:
       - name: Run core tests
         run: python -m unittest tests.test_core tests.test_api -v
 
-  # ========== macOS 打包（通用版，arm64 架构，Intel Mac 可通过 Rosetta 运行）==========
+  # ========== macOS 打包（universal 二进制，同时支持 Intel 和 Apple Silicon）==========
   build-macos:
     needs: test
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
@@ -61,11 +61,31 @@ jobs:
         run: |
           echo "__VERSION__: str = \"$VERSION\"" > filmsheet/_version.py
 
-      # ========== 原生构建 macOS 应用（arm64）==========
-      - name: 打包 macOS 应用
+      # ========== 原生构建 arm64 版本 ==========
+      - name: 打包 arm64 macOS 应用
         shell: bash
         run: |
           pyinstaller main.spec --clean
+          mv dist/FilmSheet.app dist/FilmSheet_arm64.app
+
+      # ========== 通过 Rosetta 2 构建 x86_64 版本 ==========
+      - name: 打包 x86_64 macOS 应用
+        shell: bash
+        run: |
+          arch -x86_64 pyinstaller main.spec --clean
+          mv dist/FilmSheet.app dist/FilmSheet_x86.app
+
+      # ========== 合并为 universal binary ==========
+      - name: 合并为 universal 二进制
+        shell: bash
+        run: |
+          # 用 arm64 的 .app 为基础，替换可执行文件为 universal 版本
+          lipo -create \
+            dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet \
+            dist/FilmSheet_x86.app/Contents/MacOS/FilmSheet \
+            -output dist/FilmSheet_arm64.app/Contents/MacOS/FilmSheet
+          rm -rf dist/FilmSheet.app
+          mv dist/FilmSheet_arm64.app dist/FilmSheet.app
 
       - name: 压缩 macOS 产物
         run: |

@@ -108,6 +108,37 @@ async def serve_web():
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
+# Serve PWA manifest
+@app.get("/manifest.json")
+async def serve_manifest():
+    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return Response(content=f.read(), media_type="application/json")
+
+
+# Serve service worker
+@app.get("/sw.js")
+async def serve_sw():
+    sw_path = os.path.join(os.path.dirname(__file__), "sw.js")
+    with open(sw_path, "r", encoding="utf-8") as f:
+        return Response(content=f.read(), media_type="application/javascript")
+
+
+# Serve PWA icons
+@app.get("/icon-192.png")
+async def serve_icon_192():
+    icon_path = os.path.join(os.path.dirname(__file__), "icon-192.png")
+    with open(icon_path, "rb") as f:
+        return Response(content=f.read(), media_type="image/png")
+
+
+@app.get("/icon-512.png")
+async def serve_icon_512():
+    icon_path = os.path.join(os.path.dirname(__file__), "icon-512.png")
+    with open(icon_path, "rb") as f:
+        return Response(content=f.read(), media_type="image/png")
+
+
 # ---------------------------------------------------------------------------
 # API Endpoint
 # ---------------------------------------------------------------------------
