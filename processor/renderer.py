@@ -5,7 +5,7 @@ import math
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-from utils.helpers import STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, open_folder
+from utils.helpers import STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, open_folder, get_system_font
 
 
 class BaseRenderer:
@@ -28,7 +28,14 @@ class BaseRenderer:
         self.status_callback = status_callback or (lambda _: None)
         self.progress_callback = progress_callback or (lambda *_: None)
         self.is_preview = is_preview
+        self._font_cache = {}
         self.colors = self._resolve_colors()
+
+    def _load_font(self, size, family=None):
+        key = (size, family)
+        if key not in self._font_cache:
+            self._font_cache[key] = get_system_font(size)
+        return self._font_cache[key]
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -137,13 +144,18 @@ class BaseRenderer:
 
     def _load_pack_image(self):
         pack_img_path = self.config.get('pack_image', '')
+        if isinstance(pack_img_path, Image.Image):
+            pack_img = pack_img_path.copy().convert('RGB')
+            self.processor._pack_img_original = pack_img
+            return pack_img
         if pack_img_path and os.path.exists(pack_img_path):
             try:
                 # Pre-load pack image once; cache in processor to avoid re-opening.
-                pack_img = Image.open(pack_img_path).convert('RGB')
+                with Image.open(pack_img_path) as source:
+                    pack_img = source.convert('RGB')
                 self.processor._pack_img_original = pack_img
                 return pack_img
-            except Exception:
+            except (OSError, UnidentifiedImageError):
                 pass
         return None
 
@@ -316,7 +328,7 @@ class BaseRenderer:
         side_margin = layout['side_margin'] * aa_scale
         total_w = layout['big_total_w']
 
-        font_main = self.processor._load_font(
+        font_main = self._load_font(
             int(34 * thumb_w / 400) * aa_scale
         )
         if not font_main:
@@ -438,7 +450,7 @@ class BaseRenderer:
         base_scale = layout['base_scale']
 
         font_size = int(18 * layout['thumb_w'] / 400) * aa_scale
-        font = self.processor._load_font(font_size)
+        font = self._load_font(font_size)
         if not font:
             return
 

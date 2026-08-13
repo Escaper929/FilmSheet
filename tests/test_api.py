@@ -48,6 +48,18 @@ class TestRenderAPI(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_pwa_assets_are_served(self):
+        for path, media_type in (
+            ("/manifest.json", "application/json"),
+            ("/sw.js", "application/javascript"),
+            ("/icon-192.png", "image/png"),
+            ("/icon-512.png", "image/png"),
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(media_type, response.headers["content-type"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

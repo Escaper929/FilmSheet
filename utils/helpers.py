@@ -5,7 +5,6 @@ import sys
 import json
 import platform
 import subprocess
-from PIL import ImageFont
 
 APP_NAME = "FilmSheet"
 
@@ -81,6 +80,10 @@ STYLE_COLORS = {
 }
 
 def get_system_font(size):
+    # Font loading is needed only while rendering.  Keeping Pillow out of the
+    # startup import path lets the Tk window appear sooner on macOS.
+    from PIL import ImageFont
+
     candidates = []
     if os.name == 'nt':
         windir = os.environ.get('WINDIR', r'C:\Windows')
@@ -140,7 +143,7 @@ def load_config():
             with open(config_path, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
                 cfg.update(loaded)
-        except Exception:
+        except (OSError, FileNotFoundError):
             pass
     # Clean up stale render_style values (e.g. removed styles)
     if cfg.get("render_style") not in STYLE_COLORS:

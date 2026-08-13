@@ -235,6 +235,11 @@ class TestImagePipeline(unittest.TestCase):
         result = process_120_image(io.BytesIO(buf.getvalue()), "645", 500, "positive", True)
         self.assertIsNotNone(result)
 
+    def test_process_image_accepts_a_pil_image(self):
+        source = Image.new("RGB", (360, 240), (12, 34, 56))
+        result = process_135_image(source, 180, "positive", True)
+        self.assertEqual(result.size, (180, 120))
+
 
 # ====================================================================
 # Parallel processing order tests
@@ -429,6 +434,18 @@ class TestLayoutConsistency(unittest.TestCase):
             for key in row:
                 if key is not None:
                     self.assertIn(key, LABEL_MAP, f"{key} not in LABEL_MAP")
+
+    def test_135_layout_accounts_for_lead_frames(self):
+        from processor.renderers_135 import Renderer135
+        from processor.renderer_stub import FilmProcessorStub
+
+        config = {
+            "thumb_width": 400, "spacing": 20, "columns": 6,
+            "sub_format": "标准 36×24", "render_style": "lightbox",
+        }
+        images = [Image.new("RGB", (400, 267)) for _ in range(72)]
+        layout = Renderer135(config, FilmProcessorStub(config), images).compute_layout()
+        self.assertEqual(layout["rows"], 13)
 
 
 # ====================================================================

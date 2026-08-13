@@ -90,7 +90,7 @@ docker run -d --name filmsheet \
 健康检查。
 
 ```json
-{"status": "ok", "service": "FilmSheet API", "version": "1.6.5"}
+{"status": "ok", "service": "FilmSheet API", "version": "1.29"}
 ```
 
 ## 开发

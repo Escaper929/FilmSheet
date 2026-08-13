@@ -8,7 +8,7 @@ __pycache__/
 dist/
 build/
 *.app/
-.DS_Store
 Thumbs.db
 filmsheet_config.json
 *.log
+.venv/

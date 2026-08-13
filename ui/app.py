@@ -6,10 +6,7 @@ import threading
 import json
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from PIL import Image
-
 from filmsheet._version import __VERSION__
-from processor.film_processor import FilmProcessor
 from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
 
 class App:
@@ -651,11 +648,16 @@ class App:
         threading.Thread(target=self._run_preview_worker, args=(config,), daemon=True).start()
 
     def _run_preview_worker(self, config):
+        # The rendering pipeline imports Pillow and the renderers.  Keep that
+        # work out of application startup so the main window appears quickly.
+        from processor.film_processor import FilmProcessor
         proc = FilmProcessor(config)
         img, error = proc.render_preview()
         self.root.after(0, self._show_preview_result, img, error)
 
     def _show_preview_result(self, img, error):
+        from PIL import Image
+
         if error:
             self.status_lbl.config(text="预览失败", foreground="red")
             messagebox.showerror("预览失败", error)
@@ -742,6 +744,8 @@ class App:
         self.cancel_btn.config(state=tk.NORMAL)
         self.progress_bar['value'] = 0
 
+        # Import the image-processing stack only once the user starts work.
+        from processor.film_processor import FilmProcessor
         self.processor = FilmProcessor(config)
         threading.Thread(target=self.run_worker, daemon=True).start()
 

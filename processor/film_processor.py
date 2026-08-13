@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 
+import logging
+
 import os
 import math
 import random
 import time
 import threading
 import subprocess
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
-    get_system_font, open_folder, load_config, save_config,
+    open_folder, load_config, save_config,
     STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS,
     FILM_FORMAT_RATIOS, SUPPORTED_FORMATS
 )
@@ -30,18 +31,9 @@ from .image_pipeline import (
 class FilmProcessor:
     def __init__(self, config):
         self.config = config
+        self._max_workers = min(4, os.cpu_count() or 1)
         self.is_cancelled = False
         self.engine = Strict135FilmEngine(dpi=300)
-        # Font cache: (size, family) -> font object
-        self._font_cache: dict[tuple[int, str | None], ImageFont.FreeTypeFont | None] = {}
-
-    def _load_font(self, size: int, family: str | None = None) -> ImageFont.FreeTypeFont | None:
-        """Load font with LRU-style caching by (size, family)."""
-        key = (size, family)
-        if key not in self._font_cache:
-            self._font_cache[key] = get_system_font(size)
-        return self._font_cache[key]
-
     # ------------------------------------------------------------------
     # Shared rendering helpers
     # ------------------------------------------------------------------
@@ -216,7 +208,8 @@ class FilmProcessor:
                         files = [f for f in files if os.path.isfile(f)]
                         if files:
                             return sorted(files), None
-                except:
+                except Exception as e:
+                    self._logger.warning("Failed to parse single_image_path: %s", e)
                     pass  # Fall back to treating as single file path
                 # Fallback: treat as single file path string
                 if isinstance(single, str) and os.path.isfile(single):
@@ -405,8 +398,7 @@ class FilmProcessor:
             processing_mode = cfg.get('processing_mode', 'positive')
             force_landscape = cfg.get('force_landscape', True)
             status_callback("正在处理图片...")
-            max_workers = min(4, os.cpu_count() or 1)
-            executor = ThreadPoolExecutor(max_workers=max_workers)
+            executor = ThreadPoolExecutor(max_workers=self._max_workers)
             try:
                 future_to_index = {}
                 for index, f in enumerate(files):
@@ -433,8 +425,7 @@ class FilmProcessor:
             processing_mode = cfg.get('processing_mode', 'positive')
             force_landscape = cfg.get('force_landscape', True)
             status_callback("正在处理图片...")
-            max_workers = min(4, os.cpu_count() or 1)
-            executor = ThreadPoolExecutor(max_workers=max_workers)
+            executor = ThreadPoolExecutor(max_workers=self._max_workers)
             try:
                 future_to_index = {
                     executor.submit(_process_135_image, f, thumb_w, processing_mode, force_landscape, cfg.get('sub_format', '标准 36×24')): index
@@ -478,7 +469,7 @@ class FilmProcessor:
             is_120 = (self.config['film_format'] == "120")
 
             if is_120:
-                executor = ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1))
+                executor = ThreadPoolExecutor(max_workers=self._max_workers)
                 try:
                     future_to_index = {
                         executor.submit(self._process_120_image, f, self.config['sub_format'], 80): index
@@ -500,7 +491,7 @@ class FilmProcessor:
                     return None, "所有图片处理失败"
                 return self._render_preview_120(processed_imgs), None
             else:
-                executor = ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1))
+                executor = ThreadPoolExecutor(max_workers=self._max_workers)
                 try:
                     future_to_index = {
                         executor.submit(self.process_single_image, f, 80): index

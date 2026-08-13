@@ -26,13 +26,14 @@ a = Analysis(
         'PIL.ImageFont',
         'PIL.ImageOps',
         'PIL.ImageTk',
+        'PIL._imagingtk',
         'ttkthemes',
         'concurrent.futures',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['PIL._imagingtk'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )
@@ -41,9 +42,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='FilmSheet',
     debug=False,
     bootloader_ignore_signals=False,
@@ -61,8 +61,14 @@ exe = EXE(
 
 import sys
 if sys.platform == 'darwin':
+    # A directory-style app keeps native libraries in Contents/Frameworks.
+    # Unlike a one-file executable it does not unpack Pillow/Tk to a temporary
+    # directory on every launch, which materially improves macOS startup time.
     app = BUNDLE(
         exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
         name='FilmSheet.app',
         icon=None,
         bundle_identifier='com.filmsheet.app',
@@ -72,4 +78,15 @@ if sys.platform == 'darwin':
             'CFBundleIdentifier': 'com.filmsheet.app',
             'NSHighResolutionCapable': True,
         },
+    )
+else:
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='FilmSheet',
     )

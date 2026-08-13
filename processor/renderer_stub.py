@@ -9,7 +9,7 @@ from PIL import ImageFont
 
 from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
-    LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, get_system_font,
+    LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS,
 )
 from .edge_text import generate_edge_text
 from .image_pipeline import cover_resize_crop as _cover_resize_crop
@@ -27,15 +27,6 @@ class FilmProcessorStub:
         self.config = config
         self.engine = Strict135FilmEngine(dpi=300)
         # Font cache: (size, family) -> font object
-        self._font_cache: dict[tuple[int, str | None], ImageFont.FreeTypeFont | None] = {}
-
-    def _load_font(self, size: int, family: str | None = None) -> ImageFont.FreeTypeFont | None:
-        """Load font with LRU-style caching by (size, family)."""
-        key = (size, family)
-        if key not in self._font_cache:
-            self._font_cache[key] = get_system_font(size)
-        return self._font_cache[key]
-
     def _draw_info_block(
         self, draw, font_main, colors, text_area_left, text_area_right,
         top_margin, info_top_padding, info_line_height, base_scale, thumb_w,

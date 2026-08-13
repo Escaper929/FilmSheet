@@ -35,7 +35,10 @@ class Renderer135(BaseRenderer):
             # In single-photo mode, set spacing to 0 to avoid gaps between perforations
             # and the image edge horizontally.
             spacing = 0
-        rows = math.ceil(len(self.images) / cols)
+        # The first multi-photo row reserves two frame positions as film lead.
+        # Account for those slots so a full 72-image input does not silently
+        # drop its final two frames.
+        rows = (1 if cols == 1 else math.ceil((len(self.images) + 2) / cols))
 
         sub_format = self.config.get('sub_format', '标准 36×24')
         frame_w_mm, frame_h_mm, perfs_per_frame = self.sub_format_configs.get(
@@ -173,7 +176,7 @@ class Renderer135(BaseRenderer):
 
         edge_info = self.processor._generate_edge_text()
         font_size = int(16 * layout['thumb_w'] / 400 * 0.85) * scale
-        font = self.processor._load_font(font_size)
+        font = self._load_font(font_size)
         if not font:
             return
 
@@ -277,7 +280,7 @@ class Renderer135(BaseRenderer):
 
         edge_info = self.processor._generate_edge_text()
         font_size = int(16 * layout['thumb_w'] / 400 * 0.85) * scale
-        font = self.processor._load_font(font_size)
+        font = self._load_font(font_size)
         if not font:
             return
 
@@ -291,7 +294,7 @@ class Renderer135(BaseRenderer):
         top_line = "  ".join(top_parts)
 
         if top_line:
-            font_top = self.processor._load_font(int(font_size * 0.9))
+            font_top = self._load_font(int(font_size * 0.9))
             edge_y_top = y1 + edge_y_offset
 
             total_w = layout['big_total_w']

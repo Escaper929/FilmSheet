@@ -1010,6 +1010,15 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// Enable offline access to the app shell when the browser supports PWAs.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.warn('FilmSheet service worker registration failed:', error);
+    });
+  });
+}
 </script>
 </body>
 </html>

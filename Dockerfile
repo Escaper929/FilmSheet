@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/main.py .
 COPY api/index.html .
+COPY api/manifest.json .
+COPY api/sw.js .
+COPY api/icon-192.png .
+COPY api/icon-512.png .
 COPY processor/ ./processor/
 COPY engine/ ./engine/
 COPY utils/ ./utils/

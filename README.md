@@ -221,8 +221,8 @@ pip install Pillow ttkthemes py2app pyinstaller
 # macOS 打包
 python setup.py py2app
 
-# Windows 打包
-pyinstaller --onefile --windowed main.py
+# Windows/macOS 打包（使用目录式包，避免单文件程序每次启动时解压依赖）
+pyinstaller main.spec --clean
 ```
 
 ## License

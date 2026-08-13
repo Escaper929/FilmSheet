@@ -52,9 +52,14 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 更新版本号文件
+        if: steps.version.outputs.VERSION != ''
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
         shell: bash
@@ -66,6 +71,7 @@ jobs:
         run: |
           pyinstaller main.spec --clean
           xattr -cr dist/FilmSheet.app
+          test -d dist/FilmSheet.app/Contents/Frameworks
 
       - name: 压缩 macOS 产物
         run: |
@@ -82,7 +88,9 @@ jobs:
   build-macos-x86:
     needs: test
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-13  # Intel Mac runner
+    # macos-13 was retired by GitHub Actions in December 2025.  Use the
+    # supported native Intel image so PyInstaller and Pillow are both x86_64.
+    runs-on: macos-15-intel
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -99,9 +107,14 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 更新版本号文件
+        if: steps.version.outputs.VERSION != ''
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
         shell: bash
@@ -113,6 +126,8 @@ jobs:
         run: |
           pyinstaller main.spec --clean
           xattr -cr dist/FilmSheet.app
+          test -d dist/FilmSheet.app/Contents/Frameworks
+          lipo -verify_arch x86_64 dist/FilmSheet.app/Contents/MacOS/FilmSheet
 
       - name: 压缩 macOS 产物
         run: |
@@ -146,9 +161,14 @@ jobs:
 
       - name: 获取版本号
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 更新版本号文件
+        if: steps.version.outputs.VERSION != ''
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
         shell: bash
@@ -162,7 +182,7 @@ jobs:
 
       - name: 压缩 .exe
         run: |
-            Compress-Archive -Path "dist/FilmSheet.exe" -DestinationPath "FilmSheet-Windows.zip"
+            Compress-Archive -Path "dist/FilmSheet" -DestinationPath "FilmSheet-Windows.zip"
 
       - name: 上传 Windows 产物
         uses: actions/upload-artifact@v4

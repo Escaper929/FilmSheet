@@ -6,14 +6,26 @@ Independent of rendering, config, or UI — suitable for Web/mobile API.
 """
 
 from PIL import Image, ImageOps
-from typing import Optional
+from typing import BinaryIO, Optional, Union
 
 
 from utils.helpers import FILM_FORMAT_RATIOS
 
 
+ImageSource = Union[str, BinaryIO, Image.Image]
+
+
+def _open_image(source: ImageSource) -> Image.Image:
+    """Return a loaded copy regardless of whether *source* is a path or PIL image."""
+    if isinstance(source, Image.Image):
+        return source.copy()
+    with Image.open(source) as image:
+        image.load()
+        return image.copy()
+
+
 def process_135_image(
-    filepath: str,
+    filepath: ImageSource,
     thumb_width: int = 400,
     processing_mode: str = "positive",
     force_landscape: bool = True,
@@ -41,7 +53,7 @@ def process_135_image(
         Processed PIL Image, or None on failure.
     """
     try:
-        img = ImageOps.exif_transpose(Image.open(filepath))
+        img = ImageOps.exif_transpose(_open_image(filepath))
         if img.mode != 'RGB':
             img = img.convert('RGB')
         if processing_mode == 'negative':
@@ -55,7 +67,7 @@ def process_135_image(
         target_h = int(thumb_width / expected_ratio)
         img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
-    except Exception:
+    except (OSError, UnidentifiedImageError):
         return None
 
 
@@ -158,7 +170,7 @@ def _maybe_rotate_portrait_to_landscape(img: Image.Image, force_landscape: bool)
 
 
 def process_120_image(
-    filepath: str,
+    filepath: ImageSource,
     sub_format: str = "66",
     thumb_width: int = 400,
     processing_mode: str = "positive",
@@ -180,7 +192,7 @@ def process_120_image(
         Processed PIL Image, or None on failure.
     """
     try:
-        img = ImageOps.exif_transpose(Image.open(filepath))
+        img = ImageOps.exif_transpose(_open_image(filepath))
         if img.mode != 'RGB':
             img = img.convert('RGB')
         if processing_mode == 'negative':
@@ -204,7 +216,7 @@ def process_120_image(
         target_h = int(thumb_width / expected_ratio)
         img = img.resize((thumb_width, target_h), Image.LANCZOS)
         return img
-    except Exception:
+    except (OSError, UnidentifiedImageError):
         return None
 
 
