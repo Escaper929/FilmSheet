@@ -1,4 +1,4 @@
-﻿name: Build FilmSheet
+name: Build FilmSheet
 
 on:
   pull_request:
@@ -30,6 +30,20 @@ jobs:
 
       - name: Run core tests
         run: python -m unittest tests.test_core tests.test_api -v
+
+      - name: 校验版本号与 tag 一致
+        # 打 tag 时，仓库内的 filmsheet/_version.py 必须与 tag 版本同步，
+        # 否则发版会因版本号脱节而失败。
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          GOT=$(grep -oP '__VERSION__\s*:\s*str\s*=\s*"\K[^"]+' filmsheet/_version.py)
+          if [ "$TAG" != "$GOT" ]; then
+            echo "::error::版本号不一致：tag=v${TAG}，但 filmsheet/_version.py 里是 ${GOT}。请先在 main 上把 _version.py 更新为 ${TAG} 再打 tag。"
+            exit 1
+          fi
+          echo "版本号一致：v${TAG}"
 
   # ========== macOS arm64 打包 ==========
   build-macos-arm64:

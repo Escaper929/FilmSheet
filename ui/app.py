@@ -9,11 +9,63 @@ from tkinter import filedialog, messagebox, ttk
 from filmsheet._version import __VERSION__
 from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
 
+# ::: 界面双主题调色板（macOS 风格） :::
+# 浅色 = 系统灰白 + 白色卡片 + iOS 蓝强调；深色 = 近黑 + 深灰卡片 + 亮蓝强调
+# 扁平、弱边框、靠色彩分层，呼应 macOS 系统外观。
+THEMES = {
+    "light": {
+        "name": "浅色",
+        "bg":        "#F5F5F7",   # 系统灰白（macOS 浅色窗口底）
+        "surface":   "#FFFFFF",   # 白色卡片
+        "field":     "#FFFFFF",   # 输入框内部
+        "fg":        "#1D1D1F",   # 近黑主文字
+        "fg_muted":  "#86868B",   # 次要文字（系统灰）
+        "disabled":  "#B0B0B5",
+        "accent":    "#0071E3",   # 苹果蓝强调
+        "accent_fg": "#FFFFFF",
+        "border":    "#E2E2E6",   # 细描边（浅灰）
+        "hover":     "#EDEDF0",
+        "active":    "#E3E3E8",
+        "success":   "#34C759",
+        "warning":   "#FF9500",
+        "error":     "#FF3B30",
+    },
+    "dark": {
+        "name": "深色",
+        "bg":        "#1E1E20",   # 近黑（macOS 深色窗口底）
+        "surface":   "#2C2C2E",   # 深灰卡片
+        "field":     "#3A3A3C",   # 输入框
+        "fg":        "#F5F5F7",   # 系统白文字
+        "fg_muted":  "#98989F",   # 次要文字（深色系统灰）
+        "disabled":  "#5B5B60",
+        "accent":    "#0A84FF",   # 亮蓝强调
+        "accent_fg": "#FFFFFF",
+        "border":    "#3F3F46",   # 细描边
+        "hover":     "#333336",
+        "active":    "#3A3A3C",
+        "success":   "#30D158",
+        "warning":   "#FF9F0A",
+        "error":     "#FF453A",
+    },
+}
+
+# 字体：优先微软雅黑（Windows），退回到等线/黑体/默认
+def _pick_font(root):
+    from tkinter import font as tkfont
+    families = set(tkfont.families(root))
+    for cand in ("Microsoft YaHei UI", "微软雅黑", "Microsoft YaHei",
+                 "Segoe UI", "DengXian", "Tahoma"):
+        if cand in families:
+            return cand
+    return "TkDefaultFont"
+
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title(f"FilmSheet {__VERSION__} @Escaper")
-        self.root.geometry("660x850")
+        self.root.geometry("720x780")
+        self.root.minsize(560, 600)
+        # 允许用户缩放窗口（内容区有滚动条兜底）
 
         cfg = load_config()
         self.pack_history = cfg.get("pack_images", [])
@@ -59,9 +111,15 @@ class App:
 
         self.processor = None
         self.info_labels = {}
+        self.font = _pick_font(root)          # 主字体（微软雅黑）
+        self._font_widgets = []               # 需随主题更新字体的控件
+        self._pages = []                      # 页面 wrapper 列表
+        self._current_page = 0
+        # 从配置恢复界面主题（默认浅色）
+        cfg = load_config()
+        self.colors = THEMES.get(cfg.get("ui_theme", "light"), THEMES["light"])
         self.build_ui()
-        self._refresh_tmpl_combo()
-        self._update_batch_checkbox_label()
+        self._apply_theme(self.colors)
 
     def _get_label_text(self, key):
         lang = self.vars['info_lang'].get()
@@ -128,22 +186,54 @@ class App:
         save_config(cfg)
 
     def build_ui(self):
-        main_container = ttk.Frame(self.root)
-        main_container.pack(fill=tk.BOTH, expand=True)
+        outer = ttk.Frame(self.root)
+        outer.pack(fill=tk.BOTH, expand=True)
 
-        canvas = tk.Canvas(main_container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_container, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        # ================= 固定底部操作栏（不随滚动，主操作始终可见） =================
+        action_bar = ttk.Frame(outer, padding=(14, 8, 14, 12))
+        self.action_bar = action_bar
+        action_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.progress_bar = ttk.Progressbar(action_bar, orient=tk.HORIZONTAL, mode='determinate')
+        self.progress_bar.pack(fill=tk.X, pady=(0, 10))
+
+        btn_row = ttk.Frame(action_bar)
+        btn_row.pack(fill=tk.X)
+        self.status_lbl = ttk.Label(btn_row, style="Muted.TLabel", text="FilmSheet Ready")
+        self.status_lbl.pack(side=tk.LEFT)
+        self.theme_btn = ttk.Button(btn_row, style="Toolbutton", width=14, command=self.toggle_theme)
+        self.theme_btn.pack(side=tk.LEFT, padx=(10, 0))
+        self.preview_btn = ttk.Button(btn_row, text="预览", command=self.preview_process)
+        self.preview_btn.pack(side=tk.RIGHT, padx=(6, 0))
+        self.cancel_btn = ttk.Button(btn_row, text="取消", command=self.cancel_process, state=tk.DISABLED)
+        self.cancel_btn.pack(side=tk.RIGHT, padx=6)
+        self.start_btn = ttk.Button(btn_row, text="开始生成", command=self.start_process, style="Accent.TButton", width=12)
+        self.start_btn.pack(side=tk.RIGHT, padx=6)
+
+        # ================= 顶部导航条（自绘，macOS 风格选中下划线） =================
+        nav_bar = tk.Frame(outer, bg=self.colors["bg"])
+        self.nav_bar = nav_bar
+        nav_bar.pack(side=tk.TOP, fill=tk.X, padx=(8, 8), pady=(6, 0))
+
+        self.nav_items = []          # [(label, index, underline_frame)]
+
+        # ================= 可滚动内容区（页面） =================
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        self.canvas = canvas
+        scrollbar = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set,
+                         bg=self.colors["bg"], highlightbackground=self.colors["bg"])
 
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        main_frame = ttk.Frame(canvas, padding="10")
-        canvas.create_window((0, 0), window=main_frame, anchor="nw")
+        # 页面容器：各 tab 作为其子 Frame，用 pack 切换显示
+        self.pages_host = tk.Frame(canvas, bg=self.colors["bg"])
+        canvas.create_window((0, 0), window=self.pages_host, anchor="nw")
 
         def configure_scroll_region(event):
             canvas.configure(scrollregion=canvas.bbox("all"))
-        main_frame.bind("<Configure>", configure_scroll_region)
+        self.pages_host.bind("<Configure>", configure_scroll_region)
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -160,148 +250,187 @@ class App:
 
         self.root.bind_all('<Key>', _on_key)
 
-        # ---- 基本设置 ----
-        basic_frame = ttk.LabelFrame(main_frame, text="基本设置", padding="10")
-        basic_frame.grid(row=0, column=0, columnspan=4, sticky=tk.EW, pady=5)
-        ttk.Label(basic_frame, text="图片来源:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(basic_frame, textvariable=self.vars['input_folder'], width=35).grid(row=0, column=1, padx=5)
-        ttk.Button(basic_frame, text="浏览...", command=self.browse_input).grid(row=0, column=2, padx=5)
-        ttk.Label(basic_frame, text="输出:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(basic_frame, textvariable=self.vars['output_file'], width=35).grid(row=1, column=1, columnspan=2, sticky=tk.EW)
+        # =====================================================================
+        # Tab 1: 输入与输出
+        # =====================================================================
+        io_tab = self._add_page("输入与输出")
+        io_tab.columnconfigure(0, weight=1)
+        io_tab.columnconfigure(1, weight=1)
+
+        basic_frame = ttk.LabelFrame(io_tab, text="输入", padding=12)
+        basic_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6), pady=6)
+        basic_frame.columnconfigure(1, weight=1)
+        ttk.Label(basic_frame, text="图片来源").grid(row=0, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(basic_frame, textvariable=self.vars['input_folder'], width=30).grid(row=0, column=1, sticky=tk.EW, padx=8)
+        ttk.Button(basic_frame, text="浏览…", command=self.browse_input).grid(row=0, column=2, padx=4)
 
         # Single photo export mode — shown first so users choose input method immediately
         self.single_photo_cb = ttk.Checkbutton(
             basic_frame, text="单张照片导出", variable=self.vars['single_photo_mode'])
-        self.single_photo_cb.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=5)
+        self.single_photo_cb.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=6)
+        ttk.Checkbutton(
+            basic_frame, text="附带 包装/信息/水印",
+            variable=self.vars['single_photo_show_extra']).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=2)
 
-        # ---- 参数设置 ----
-        param_frame = ttk.LabelFrame(main_frame, text="参数设置", padding="10")
-        param_frame.grid(row=1, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        ttk.Separator(basic_frame, orient=tk.HORIZONTAL).grid(row=3, column=0, columnspan=3, sticky=tk.EW, pady=8)
+        ttk.Label(basic_frame, text="输出").grid(row=4, column=0, sticky=tk.W, pady=4)
+        ttk.Entry(basic_frame, textvariable=self.vars['output_file'], width=30).grid(row=4, column=1, columnspan=2, sticky=tk.EW, padx=8)
 
-        # 第一行：成像模式 + 画幅 + 子画幅 + 比例
-        ttk.Label(param_frame, text="成像模式:").grid(row=0, column=0, sticky=tk.W)
-        mode_radio = ttk.Frame(param_frame)
-        mode_radio.grid(row=0, column=1, sticky=tk.W)
-        ttk.Radiobutton(mode_radio, text="正片", variable=self.vars['processing_mode'], value="positive").pack(side=tk.LEFT)
-        ttk.Radiobutton(mode_radio, text="负片", variable=self.vars['processing_mode'], value="negative").pack(side=tk.LEFT, padx=(10,0))
+        out_frame = ttk.LabelFrame(io_tab, text="输出选项", padding=12)
+        out_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0), pady=6)
+        out_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(param_frame, text="画幅:").grid(row=0, column=2, sticky=tk.W, padx=(20,0))
-        rf = ttk.Frame(param_frame)
-        rf.grid(row=0, column=3, sticky=tk.W)
+        ttk.Label(out_frame, text="格式").grid(row=0, column=0, sticky=tk.W, pady=4)
+        fmt_combo = ttk.Combobox(out_frame, textvariable=self.vars['output_format'],
+                                 values=["PNG", "JPG"], state="readonly", width=8)
+        fmt_combo.grid(row=0, column=1, sticky=tk.W, padx=8)
+        fmt_combo.bind("<<ComboboxSelected>>", self.update_ext)
+
+        self.q_label = ttk.Label(out_frame, text="质量")
+        self.q_label.grid(row=1, column=0, sticky=tk.W, pady=4)
+        self.q_scale = ttk.Scale(out_frame, from_=1, to=100, variable=self.vars['quality'],
+                                 orient=tk.HORIZONTAL, length=120)
+        self.q_scale.grid(row=1, column=1, sticky=tk.EW, padx=8)
+        self.q_val = ttk.Label(out_frame, textvariable=self.vars['quality'], width=3)
+        self.q_val.grid(row=1, column=2, sticky=tk.W)
+        self.update_ext(None)
+
+        self.batch_cb = ttk.Checkbutton(out_frame, text="同时生成接触印相版", variable=self.vars['batch_export_enabled'])
+        self.batch_cb.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=8)
+
+        # =====================================================================
+        # Tab 2: 画幅与排版
+        # =====================================================================
+        frame_tab = self._add_page("画幅与排版")
+        frame_tab.columnconfigure(0, weight=1)
+        frame_tab.columnconfigure(1, weight=1)
+
+        mode_frame = ttk.LabelFrame(frame_tab, text="成像模式", padding=12)
+        mode_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6), pady=6)
+        ttk.Radiobutton(mode_frame, text="正片", variable=self.vars['processing_mode'], value="positive").pack(anchor=tk.W, pady=3)
+        ttk.Radiobutton(mode_frame, text="负片", variable=self.vars['processing_mode'], value="negative").pack(anchor=tk.W, pady=3)
+
+        sim_frame = ttk.LabelFrame(frame_tab, text="胶片模拟", padding=12)
+        sim_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0), pady=6)
+        sim_frame.columnconfigure(1, weight=1)
+        ttk.Label(sim_frame, text="齿孔模式").grid(row=0, column=0, sticky=tk.W, pady=4)
+        ttk.Combobox(sim_frame, textvariable=self.vars['perf_mode'],
+                     values=["Auto", "KS (民用)", "BH (电影)"], state="readonly", width=13).grid(row=0, column=1, sticky=tk.W, padx=8)
+        ttk.Label(sim_frame, text="渲染风格").grid(row=1, column=0, sticky=tk.W, pady=6)
+        style_radio = ttk.Frame(sim_frame)
+        style_radio.grid(row=1, column=1, sticky=tk.W)
+        ttk.Radiobutton(style_radio, text="灯板正片", variable=self.vars['render_style'],
+                        value="lightbox", command=self._on_style_changed).pack(side=tk.LEFT, pady=1)
+        ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
+                        value="contact_sheet", command=self._on_style_changed).pack(side=tk.LEFT, padx=(12,0))
+
+        film_frame = ttk.LabelFrame(frame_tab, text="画幅", padding=12)
+        film_frame.grid(row=1, column=0, sticky=tk.NSEW, padx=(0, 6), pady=6)
+        film_frame.columnconfigure(1, weight=1)
+        rf = ttk.Frame(film_frame)
+        rf.grid(row=0, column=0, sticky=tk.W)
         ttk.Radiobutton(rf, text="135", variable=self.vars['film_format'], value="135",
                         command=self.toggle_sub_format).pack(side=tk.LEFT)
         ttk.Radiobutton(rf, text="120", variable=self.vars['film_format'], value="120",
-                        command=self.toggle_sub_format).pack(side=tk.LEFT, padx=(10,0))
+                        command=self.toggle_sub_format).pack(side=tk.LEFT, padx=(12,0))
+        ttk.Label(film_frame, text="比例").grid(row=0, column=2, sticky=tk.W, padx=(10,0))
+        self.ratio_label = ttk.Label(film_frame, text="3:2")
+        self.ratio_label.grid(row=0, column=3, sticky=tk.W)
 
-        # 子画幅下拉框
-        self.sub_combo = ttk.Combobox(param_frame, textvariable=self.vars['sub_format'],
-                                      state="readonly", width=12)
-        self.sub_combo.grid(row=0, column=4, sticky=tk.W, padx=5)
+        ttk.Label(film_frame, text="子画幅").grid(row=1, column=0, sticky=tk.W, pady=8)
+        self.sub_combo = ttk.Combobox(film_frame, textvariable=self.vars['sub_format'],
+                                      state="readonly", width=14)
+        self.sub_combo.grid(row=1, column=1, sticky=tk.W, padx=8)
         self.sub_combo.bind("<<ComboboxSelected>>", lambda e: (self.update_ratio_label(), self.auto_adjust_columns()))
-
-        # 比例显示
-        ttk.Label(param_frame, text="比例:").grid(row=0, column=5, sticky=tk.W, padx=(5,0))
-        self.ratio_label = ttk.Label(param_frame, text="3:2", width=6)
-        self.ratio_label.grid(row=0, column=6, sticky=tk.W)
 
         # 初始化子画幅选项（避免首次点击画幅前下拉框为空）
         self.toggle_sub_format()
 
-        # 第二行：缩略图宽 + 每行列数 + 自适应按钮 + 强制横向
-        ttk.Label(param_frame, text="缩略图宽:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Spinbox(param_frame, from_=300, to=1600, textvariable=self.vars['thumb_width'], width=6).grid(row=1, column=1, sticky=tk.W)
-        ttk.Label(param_frame, text="每行列数:").grid(row=1, column=2, sticky=tk.W, padx=(20,0))
-        ttk.Spinbox(param_frame, from_=1, to=99, textvariable=self.vars['columns'], width=6).grid(row=1, column=3, sticky=tk.W)
-        ttk.Button(param_frame, text="自适应画幅", command=self.auto_adjust_columns).grid(row=1, column=4, sticky=tk.W, padx=(10,0))
-        ttk.Checkbutton(param_frame, text="强制横向", variable=self.vars['force_landscape']).grid(row=1, column=5, columnspan=2, sticky=tk.W, padx=(10,0))
+        layout_frame = ttk.LabelFrame(frame_tab, text="排版", padding=12)
+        layout_frame.grid(row=1, column=1, sticky=tk.NSEW, padx=(6, 0), pady=6)
+        layout_frame.columnconfigure(1, weight=1)
+        ttk.Label(layout_frame, text="缩略图宽").grid(row=0, column=0, sticky=tk.W, pady=4)
+        ttk.Spinbox(layout_frame, from_=300, to=1600, textvariable=self.vars['thumb_width'], width=8).grid(row=0, column=1, sticky=tk.W, padx=8)
+        ttk.Label(layout_frame, text="每行列数").grid(row=1, column=0, sticky=tk.W, pady=4)
+        ttk.Spinbox(layout_frame, from_=1, to=99, textvariable=self.vars['columns'], width=8).grid(row=1, column=1, sticky=tk.W, padx=8)
+        ttk.Button(layout_frame, text="自适应画幅", command=self.auto_adjust_columns).grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=8)
+        ttk.Checkbutton(layout_frame, text="强制横向", variable=self.vars['force_landscape']).grid(row=3, column=0, columnspan=2, sticky=tk.W)
 
-        # 第三行：齿孔模式 + 渲染风格
-        ttk.Label(param_frame, text="齿孔模式:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        ttk.Combobox(param_frame, textvariable=self.vars['perf_mode'],
-                     values=["Auto", "KS (民用)", "BH (电影)"], state="readonly", width=10).grid(row=2, column=1, sticky=tk.W)
+        # =====================================================================
+        # Tab 3: 外观
+        # =====================================================================
+        look_tab = self._add_page("外观")
+        look_tab.columnconfigure(0, weight=1)
+        look_tab.columnconfigure(1, weight=1)
 
-        ttk.Label(param_frame, text="渲染风格:").grid(row=2, column=2, sticky=tk.W, padx=(20,0))
-        style_radio = ttk.Frame(param_frame)
-        style_radio.grid(row=2, column=3, columnspan=3, sticky=tk.W)
-        ttk.Radiobutton(style_radio, text="灯板正片", variable=self.vars['render_style'],
-                        value="lightbox", command=self._on_style_changed).pack(side=tk.LEFT)
-        ttk.Radiobutton(style_radio, text="接触印相", variable=self.vars['render_style'],
-                        value="contact_sheet", command=self._on_style_changed).pack(side=tk.LEFT, padx=(10,0))
+        edge_frame = ttk.LabelFrame(look_tab, text="边字设置", padding=12)
+        edge_frame.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 6), pady=6)
+        edge_frame.columnconfigure(1, weight=1)
+        ttk.Label(edge_frame, text="自定义内容").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=22).grid(row=0, column=1, sticky=tk.EW, padx=8)
+        ttk.Label(edge_frame, text="(留空则从'胶卷'字段自动生成)", style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(6,0))
 
-        # ---- 模板管理 ----
-        tmpl_frame = ttk.LabelFrame(main_frame, text="模板管理", padding="5")
-        tmpl_frame.grid(row=2, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        sig_frame = ttk.LabelFrame(look_tab, text="水印签名", padding=12)
+        sig_frame.grid(row=0, column=1, sticky=tk.NSEW, padx=(6, 0), pady=6)
+        sig_frame.columnconfigure(1, weight=1)
+        ttk.Label(sig_frame, text="签名").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(sig_frame, textvariable=self.vars['signature'], width=22).grid(row=0, column=1, sticky=tk.EW, padx=8)
+        ttk.Label(sig_frame, text="(留空则不添加水印)", style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(6,0))
 
-        ttk.Label(tmpl_frame, text="模板:").grid(row=0, column=0, sticky=tk.W)
-        self.tmpl_combo = ttk.Combobox(tmpl_frame, textvariable=self.vars['current_template'],
-                                        state="readonly", width=18)
-        self.tmpl_combo.grid(row=0, column=1, padx=5)
-        self.tmpl_combo.bind("<<ComboboxSelected>>", self.load_template_from_combo)
-        ttk.Button(tmpl_frame, text="加载", command=self.load_selected_template).grid(row=0, column=2, padx=2)
-        ttk.Button(tmpl_frame, text="保存", command=self.save_new_template).grid(row=0, column=3, padx=2)
-        ttk.Button(tmpl_frame, text="删除", command=self.delete_selected_template).grid(row=0, column=4, padx=2)
+        pack_frame = ttk.LabelFrame(look_tab, text="胶卷包装图", padding=12)
+        pack_frame.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW, pady=6)
+        pack_frame.columnconfigure(1, weight=1)
 
-        # ---- 边字设置 ----
-        edge_frame = ttk.LabelFrame(main_frame, text="边字设置", padding="5")
-        edge_frame.grid(row=3, column=0, columnspan=4, sticky=tk.EW, pady=5)
-
-        ttk.Label(edge_frame, text="自定义内容:").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(edge_frame, textvariable=self.vars['edge_text'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
-        ttk.Label(edge_frame, text="(留空则从'胶卷'字段自动生成)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
-
-        # ---- 单张模式设置 ----
-        single_frame = ttk.LabelFrame(main_frame, text="单张模式", padding="5")
-        single_frame.grid(row=4, column=0, columnspan=4, sticky=tk.EW, pady=5)
-        single_show_extra_cb = ttk.Checkbutton(
-            single_frame, text="显示包装/信息/水印",
-            variable=self.vars['single_photo_show_extra'])
-        single_show_extra_cb.grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=5)
-
-        # ---- 水印签名 ----
-        sig_frame = ttk.LabelFrame(main_frame, text="水印签名", padding="5")
-        sig_frame.grid(row=5, column=0, columnspan=4, sticky=tk.EW, pady=5)
-
-        ttk.Label(sig_frame, text="签名:").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(sig_frame, textvariable=self.vars['signature'], width=25).grid(row=0, column=1, sticky=tk.W, padx=(0,10))
-        ttk.Label(sig_frame, text="(留空则不添加水印)", foreground="gray").grid(row=0, column=2, sticky=tk.W)
-
-        # ---- 胶卷包装图 ----
-        pack_frame = ttk.LabelFrame(main_frame, text="胶卷包装图", padding="10")
-        pack_frame.grid(row=6, column=0, columnspan=4, sticky=tk.EW, pady=5)
-
-        ttk.Label(pack_frame, text="图片:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(pack_frame, text="图片").grid(row=0, column=0, sticky=tk.W)
         self.pack_combo = ttk.Combobox(pack_frame, textvariable=self.vars['pack_image'],
-                                       state="readonly", width=25)
-        self.pack_combo.grid(row=0, column=1, sticky=tk.EW, padx=5)
+                                       state="readonly", width=24)
+        self.pack_combo.grid(row=0, column=1, sticky=tk.EW, padx=8)
         self.pack_combo.bind("<<ComboboxSelected>>", self.on_pack_combo_change)
-        ttk.Button(pack_frame, text="浏览", command=self.browse_pack_image).grid(row=0, column=2, padx=2)
-        ttk.Button(pack_frame, text="清除", command=self.clear_pack_image).grid(row=0, column=3, padx=2)
+        ttk.Button(pack_frame, text="浏览", command=self.browse_pack_image).grid(row=0, column=2, padx=4)
+        ttk.Button(pack_frame, text="清除", command=self.clear_pack_image).grid(row=0, column=3, padx=4)
 
-        ttk.Label(pack_frame, text="位置:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(pack_frame, text="位置").grid(row=1, column=0, sticky=tk.W, pady=8)
         pos_combo = ttk.Combobox(pack_frame, textvariable=self.vars['pack_position'],
                                  values=["left", "right"], state="readonly", width=6)
-        pos_combo.grid(row=1, column=1, sticky=tk.W)
+        pos_combo.grid(row=1, column=1, sticky=tk.W, padx=8)
         pos_combo.bind("<<ComboboxSelected>>", self.save_pack_config)
         ttk.Checkbutton(pack_frame, text="描边", variable=self.vars['pack_border_stroke'],
-                        command=self.save_pack_config).grid(row=1, column=2, sticky=tk.W, padx=(10,0))
+                        command=self.save_pack_config).grid(row=1, column=2, sticky=tk.W, padx=8)
 
-        # 包装图大小滑块
-        ttk.Label(pack_frame, text="大小:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(pack_frame, text="大小").grid(row=2, column=0, sticky=tk.W, pady=4)
         pack_size_scale = ttk.Scale(pack_frame, from_=10, to=100, variable=self.vars['pack_size'],
-                                    orient=tk.HORIZONTAL, length=120, command=self.save_pack_config)
-        pack_size_scale.grid(row=2, column=1, sticky=tk.W, padx=5)
+                                    orient=tk.HORIZONTAL, length=140, command=self.save_pack_config)
+        pack_size_scale.grid(row=2, column=1, sticky=tk.EW, padx=8)
         ttk.Label(pack_frame, textvariable=self.vars['pack_size'], width=4).grid(row=2, column=2, sticky=tk.W)
-        ttk.Label(pack_frame, text="%", foreground="gray").grid(row=2, column=3, sticky=tk.W)
+        ttk.Label(pack_frame, text="%", style="Muted.TLabel").grid(row=2, column=3, sticky=tk.W)
 
         self.refresh_pack_combo()
 
-        # ---- 拍摄信息 ----
-        info_frame = ttk.LabelFrame(main_frame, text="拍摄信息记录 (选填)", padding="10")
-        info_frame.grid(row=7, column=0, columnspan=4, sticky=tk.EW, pady=5)
+        # =====================================================================
+        # Tab 4: 拍摄信息
+        # =====================================================================
+        info_tab = self._add_page("拍摄信息")
+
+        tmpl_frame = ttk.LabelFrame(info_tab, text="模板管理", padding=12)
+        tmpl_frame.grid(row=0, column=0, sticky=tk.EW, pady=6)
+        ttk.Label(tmpl_frame, text="模板").grid(row=0, column=0, sticky=tk.W)
+        self.tmpl_combo = ttk.Combobox(tmpl_frame, textvariable=self.vars['current_template'],
+                                        state="readonly", width=20)
+        self.tmpl_combo.grid(row=0, column=1, padx=8)
+        self.tmpl_combo.bind("<<ComboboxSelected>>", self.load_template_from_combo)
+        ttk.Button(tmpl_frame, text="加载", command=self.load_selected_template).grid(row=0, column=2, padx=3)
+        ttk.Button(tmpl_frame, text="保存", command=self.save_new_template).grid(row=0, column=3, padx=3)
+        ttk.Button(tmpl_frame, text="删除", command=self.delete_selected_template).grid(row=0, column=4, padx=3)
+
+        info_frame = ttk.LabelFrame(info_tab, text="拍摄信息记录 (选填)", padding=12)
+        info_frame.grid(row=1, column=0, sticky=tk.EW, pady=6)
+        info_frame.columnconfigure(1, weight=1)
+        info_frame.columnconfigure(3, weight=1)
+        info_frame.columnconfigure(5, weight=1)
 
         lang_frame = ttk.Frame(info_frame)
-        lang_frame.grid(row=0, column=0, columnspan=8, sticky=tk.W, pady=(0,5))
-        ttk.Label(lang_frame, text="标签语言:").pack(side=tk.LEFT, padx=(0,5))
+        lang_frame.grid(row=0, column=0, columnspan=6, sticky=tk.W, pady=(0,8))
+        ttk.Label(lang_frame, text="标签语言").pack(side=tk.LEFT, padx=(0,8))
         lang_combo = ttk.Combobox(lang_frame, textvariable=self.vars['info_lang'],
                                   values=["zh", "en"], state="readonly", width=6)
         lang_combo.pack(side=tk.LEFT)
@@ -332,62 +461,81 @@ class App:
             for key, r, c in row_items:
                 if key is None:
                     continue
-                lbl = ttk.Label(info_frame, text=self._get_label_text(key))
+                lbl = ttk.Label(info_frame, style="FieldLabel.TLabel", text=self._get_label_text(key))
                 lbl.grid(row=r, column=c, sticky=tk.W, padx=5, pady=2)
                 self.info_labels[key] = lbl
                 entry_w = 10 if key == 'roll' else 14
-                # Create Combobox for all fields with history support
                 hist_key = f"history_{key}"
                 combo_history = getattr(self, hist_key, [])
                 combo = ttk.Combobox(info_frame, textvariable=self.vars[f'info_{key}'],
                                      values=combo_history, state="normal", width=entry_w)
                 combo.grid(row=r, column=c+1, sticky=tk.EW, padx=5, pady=2)
-                # Set initial value
                 current_val = self.vars[f'info_{key}'].get()
                 combo.set(current_val)
-                # Bind Enter key to save history
                 combo.bind("<Return>", lambda e, k=key: self.update_field_history(k))
 
-        # ---- 输出选项 ----
-        out_frame = ttk.LabelFrame(main_frame, text="输出选项", padding="10")
-        out_frame.grid(row=8, column=0, columnspan=4, sticky=tk.EW, pady=5)
-
-        ttk.Label(out_frame, text="格式:").grid(row=0, column=0, sticky=tk.W)
-        fmt_combo = ttk.Combobox(out_frame, textvariable=self.vars['output_format'],
-                                 values=["PNG", "JPG"], state="readonly", width=8)
-        fmt_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
-        fmt_combo.bind("<<ComboboxSelected>>", self.update_ext)
-
-        self.q_label = ttk.Label(out_frame, text="质量:")
-        self.q_scale = ttk.Scale(out_frame, from_=1, to=100, variable=self.vars['quality'],
-                                 orient=tk.HORIZONTAL, length=100)
-        self.q_val = ttk.Label(out_frame, textvariable=self.vars['quality'], width=3)
-        self.update_ext(None)
-
-        # Batch export checkbox
-        self.batch_cb = ttk.Checkbutton(out_frame, text="同时生成接触印相版", variable=self.vars['batch_export_enabled'])
-        self.batch_cb.grid(row=0, column=5, sticky=tk.W, padx=(20,0))
-
-        # ---- 控制按钮 ----
-        ctrl_frame = ttk.Frame(main_frame)
-        ctrl_frame.grid(row=9, column=0, columnspan=4, pady=15)
-
-        self.progress_bar = ttk.Progressbar(ctrl_frame, orient=tk.HORIZONTAL, length=400, mode='determinate')
-        self.progress_bar.pack(side=tk.TOP, fill=tk.X, pady=(0,10))
-
-        btn_frame = ttk.Frame(ctrl_frame)
-        btn_frame.pack(side=tk.BOTTOM)
-        self.preview_btn = ttk.Button(btn_frame, text="预览", command=self.preview_process)
-        self.preview_btn.pack(side=tk.LEFT, padx=5)
-        self.start_btn = ttk.Button(btn_frame, text="开始生成", command=self.start_process)
-        self.start_btn.pack(side=tk.LEFT, padx=5)
-        self.cancel_btn = ttk.Button(btn_frame, text="取消", command=self.cancel_process, state=tk.DISABLED)
-        self.cancel_btn.pack(side=tk.LEFT, padx=5)
-        self.status_lbl = ttk.Label(main_frame, text="FilmSheet Ready", foreground="gray")
-        self.status_lbl.grid(row=10, column=0, columnspan=4, pady=5)
-
-        # Ensure auto_adjust_columns runs after status_lbl is created
+        # 收尾：刷新可选控件
+        self._refresh_tmpl_combo()
+        self._update_batch_checkbox_label()
         self.auto_adjust_columns()
+        # 默认显示第一个页面并构建导航（macOS 风格下划线）
+        self._show_page(0)
+
+    def _add_page(self, title):
+        """创建一个页面 + 对应导航标签；返回供填充的内部 frame。"""
+        p = self.colors
+        wrapper = tk.Frame(self.pages_host, bg=p["bg"])
+        page = ttk.Frame(wrapper, padding="14")
+        page.pack(fill=tk.BOTH, expand=True)
+
+        # 导航标签（单个词，可点击）
+        idx = len(self.nav_items)
+        lbl = tk.Label(self.nav_bar, text=title, cursor="hand2",
+                       bg=p["bg"], fg=p["fg_muted"],
+                       font=(self.font, 9, "bold"))
+        lbl.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 0))
+        lbl.bind("<Button-1>", lambda e, i=idx: self._show_page(i))
+        # hover
+        lbl.bind("<Enter>", lambda e, i=idx: self._nav_hover(i, True))
+        lbl.bind("<Leave>", lambda e, i=idx: self._nav_hover(i, False))
+
+        self._pages.append(wrapper)
+        self.nav_items.append(lbl)
+        return page
+
+    def _nav_hover(self, idx, hover):
+        active = self._current_page == idx
+        if hover and not active:
+            self.nav_items[idx].configure(fg=self.colors["fg"])
+        elif not active:
+            self.nav_items[idx].configure(fg=self.colors["fg_muted"])
+
+    def _show_page(self, idx):
+        self._current_page = idx
+        for i, wrapper in enumerate(self._pages):
+            if i == idx:
+                wrapper.pack(fill=tk.BOTH, expand=True)
+            else:
+                wrapper.pack_forget()
+        # 更新导航态
+        for i, lbl in enumerate(self.nav_items):
+            if i == idx:
+                lbl.configure(fg=self.colors["accent"])
+            else:
+                lbl.configure(fg=self.colors["fg_muted"])
+        # 蓝色下划线移到选中标签下方
+        if not getattr(self, "_nav_underline", None):
+            self._nav_underline = tk.Frame(self.nav_bar, height=2,
+                                           bg=self.colors["accent"], highlightthickness=0)
+        else:
+            self._nav_underline.configure(bg=self.colors["accent"])
+        # nav_bar 需要 exp 更新
+        self.nav_bar.update_idletasks()
+        x = self.nav_items[idx].winfo_x()
+        w = self.nav_items[idx].winfo_width()
+        y = self.nav_items[idx].winfo_y() + self.nav_items[idx].winfo_height()
+        self._nav_underline.place(x=x, y=y + 2, width=w, height=2)
+        self._nav_underline.lift()
 
     def toggle_sub_format(self):
         """切换画幅时更新子画幅选项和比例显示"""
@@ -457,7 +605,7 @@ class App:
         pack_img = tmpl.get('pack_image', '')
         if pack_img and not os.path.exists(pack_img):
             messagebox.showwarning("提示", f"模板中的包装图片不存在: {pack_img}")
-        self.status_lbl.config(text=f"已加载模板: {name}", foreground="gray")
+        self.set_status(f"已加载模板: {name}")
 
     def save_new_template(self):
         from tkinter import simpledialog
@@ -483,7 +631,7 @@ class App:
         cfg["current_template"] = name
         save_config(cfg)
         self._refresh_tmpl_combo()
-        self.status_lbl.config(text=f"已保存模板: {name}", foreground="gray")
+        self.set_status(f"已保存模板: {name}")
 
     def delete_selected_template(self):
         cfg = load_config()
@@ -499,7 +647,7 @@ class App:
             self.vars['current_template'].set("")
             save_config(cfg)
             self._refresh_tmpl_combo()
-            self.status_lbl.config(text=f"已删除模板: {name}", foreground="gray")
+            self.set_status(f"已删除模板: {name}")
 
     # ---- End 模板管理 ----
 
@@ -558,7 +706,7 @@ class App:
         self.vars['columns'].set(recommended)
         # Only update status label if UI is fully initialized
         if hasattr(self, 'status_lbl') and self.status_lbl is not None:
-            self.status_lbl.config(text=f"自适应: {sub_format} → 每行 {recommended} 张", foreground="gray")
+            self.set_status(f"自适应: {sub_format} → 每行 {recommended} 张")
 
     def update_ext(self, event):
         fmt = self.vars['output_format'].get()
@@ -642,7 +790,7 @@ class App:
             sf = files[0]
             input_dir = os.path.dirname(sf)
 
-        self.status_lbl.config(text="正在预览...", foreground="gray")
+        self.set_status("正在预览...")
         config = {k: v.get() if hasattr(v, 'get') else v for k, v in self.vars.items()}
         config['output_path'] = os.path.join(input_dir, 'preview_temp.jpg')
         threading.Thread(target=self._run_preview_worker, args=(config,), daemon=True).start()
@@ -659,12 +807,12 @@ class App:
         from PIL import Image
 
         if error:
-            self.status_lbl.config(text="预览失败", foreground="red")
+            self.set_status("预览失败", "error")
             messagebox.showerror("预览失败", error)
             return
 
         if img is None:
-            self.status_lbl.config(text="预览失败", foreground="red")
+            self.set_status("预览失败", "error")
             messagebox.showwarning("提示", "没有可处理的图片")
             return
 
@@ -705,13 +853,13 @@ class App:
         # 底部按钮
         btn_frame = ttk.Frame(preview_win)
         btn_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(btn_frame, text=f"预览尺寸: {orig_w} × {orig_h} (显示: {img.width} × {img.height})", foreground="gray").pack()
+        ttk.Label(btn_frame, text=f"预览尺寸: {orig_w} × {orig_h} (显示: {img.width} × {img.height})", style="Muted.TLabel").pack()
         ttk.Button(btn_frame, text="关闭", command=preview_win.destroy).pack(pady=5)
 
         # 保持引用防止 GC
         canvas.image_ref = tk_photo
 
-        self.status_lbl.config(text="预览完成", foreground="green")
+        self.set_status("预览完成", "success")
 
     def start_process(self):
         single_mode = self.vars['single_photo_mode'].get()
@@ -761,15 +909,138 @@ class App:
 
         if result == "success":
             self.progress_bar['value'] = 100
-            self.status_lbl.config(text="FilmSheet Done!", foreground="green")
+            self.set_status("FilmSheet Done!", "success")
             messagebox.showinfo("Success", f"文件已保存至：\n{self.processor.config['output_path']}")
         elif result == "已取消":
-            self.status_lbl.config(text="已取消", foreground="orange")
+            self.set_status("已取消", "warning")
         else:
-            self.status_lbl.config(text="失败", foreground="red")
+            self.set_status("失败", "error")
             messagebox.showerror("Error", result)
 
     def cancel_process(self):
         if self.processor:
             self.processor.cancel()
-            self.status_lbl.config(text="取消中...", foreground="orange")
+            self.status_lbl.config(text="取消中...", foreground=self.colors["warning"])
+
+    # ---------------- 主题相关 ----------------
+
+    def _next_theme_name(self):
+        return "light" if self.colors["name"] == "深色" else "dark"
+
+    def toggle_theme(self):
+        key = self._next_theme_name()
+        self.colors = THEMES[key]
+        cfg = load_config()
+        cfg["ui_theme"] = key
+        save_config(cfg)
+        self._apply_theme(self.colors)
+        self.set_status(f"已切换 {self.colors['name']} 主题", "neutral")
+
+    def _apply_theme(self, p):
+        """按调色板 p 应用 ttk 样式（基于 clam，扁平可全面定制）。"""
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use('clam')
+        except tk.TclError:
+            pass
+
+        # 窗口与滚动画布底色
+        self.root.configure(bg=p["bg"])
+        self.canvas.configure(bg=p["bg"])
+        self.pages_host.configure(bg=p["bg"])
+        self.nav_bar.configure(bg=p["bg"])
+
+        # 基础容器/文字 —— 统一字体，减少方框感
+        F = self.font                      # 主字体族（微软雅黑等）
+        f_big   = (F, 10, "bold")          # 卡片标题
+        f_body  = (F, 9)                    # 正文
+        f_label = (F, 9, "bold")            # 字段标签
+        f_small = (F, 8,)                   # 次要说明
+
+        style.configure("TFrame", background=p["bg"])
+        # 底部操作栏：加 1px 顶部 hairline 分隔线，制造 macOS 的分离层次
+        if not getattr(self, "_action_bar_divider", None):
+            self._action_bar_divider = tk.Frame(self.action_bar, height=1,
+                                                bg=p["border"], highlightthickness=0)
+            self._action_bar_divider.pack(fill=tk.X, side=tk.TOP, pady=(0, 10), before=self.progress_bar)
+        else:
+            self._action_bar_divider.configure(bg=p["border"])
+        style.configure("TLabelframe", background=p["surface"], bordercolor=p["border"],
+                        relief="flat", borderwidth=1)
+        style.configure("TLabelframe.Label", background=p["surface"], foreground=p["fg"],
+                        font=f_big)
+        style.configure("TLabel", background=p["bg"], foreground=p["fg"], font=f_body)
+        style.configure("FieldLabel.TLabel", background=p["surface"], foreground=p["fg"], font=f_label)
+        style.configure("Muted.TLabel", background=p["bg"], foreground=p["fg_muted"], font=f_small)
+        style.configure("CardTitle.TLabel", background=p["surface"], foreground=p["accent"],
+                        font=f_label)
+        style.configure("TCheckbutton", background=p["surface"], foreground=p["fg"], font=f_body)
+        style.configure("TRadiobutton", background=p["surface"], foreground=p["fg"], font=f_body)
+        style.map("TCheckbutton", background=[("active", p["surface"])],
+                  foreground=[("disabled", p["disabled"])],
+                  indicatorbackground=[("!disabled", p["field"])])
+        style.map("TRadiobutton", background=[("active", p["surface"])],
+                  foreground=[("disabled", p["disabled"])],
+                  indicatorbackground=[("!disabled", p["field"])])
+
+        # 输入类控件（更柔和的浅描边 + 输入光标 + 选中态）
+        entry_opts = dict(fieldbackground=p["field"], foreground=p["fg"],
+                          bordercolor=p["border"], lightcolor=p["border"], darkcolor=p["border"],
+                          insertcolor=p["fg"], arrowcolor=p["fg_muted"], font=f_body,
+                          focuscolor=p["accent"])
+        style.configure("TEntry", padding=(6, 5), background=p["surface"], **entry_opts)
+        style.configure("TCombobox", padding=(6, 5), **entry_opts)
+        style.map("TCombobox", fieldbackground=[("readonly", p["field"])],
+                  foreground=[("disabled", p["disabled"])],
+                  selectbackground=[("readonly", p["active"])],
+                  selectforeground=[("readonly", p["fg"])])
+        style.configure("TSpinbox", padding=(6, 5), **entry_opts)
+
+        # 按钮 —— 更圆润柔和（加大内边距、减小边框感）
+        style.configure("TButton", background=p["surface"], foreground=p["fg"],
+                        bordercolor=p["border"], padding=(14, 7), font=f_body,
+                        relief="flat", focusthickness=0, focuscolor=p["accent"])
+        style.map("TButton",
+                  background=[("active", p["hover"]), ("pressed", p["active"]), ("disabled", p["bg"])],
+                  foreground=[("active", p["fg"]), ("disabled", p["disabled"])],
+                  bordercolor=[("active", p["accent"]), ("disabled", p["border"])])
+        style.configure("Accent.TButton", background=p["accent"], foreground=p["accent_fg"],
+                        bordercolor=p["accent"], padding=(18, 8), font=(F, 9, "bold"),
+                        relief="flat", focusthickness=0)
+        style.map("Accent.TButton",
+                  background=[("active", p["accent"]), ("pressed", p["active"]), ("disabled", p["bg"])],
+                  foreground=[("disabled", p["disabled"])])
+        style.configure("Toolbutton", background=p["bg"], foreground=p["fg_muted"],
+                        bordercolor=p["bg"], padding=(10, 5), font=f_small, focusthickness=0)
+        style.map("Toolbutton", background=[("active", p["hover"])],
+                  foreground=[("active", p["fg"])])
+
+        # 进度条 / 滚动条
+        style.configure("Horizontal.TProgressbar", background=p["accent"],
+                        troughcolor=p["border"], bordercolor=p["border"], lightcolor=p["accent"],
+                        darkcolor=p["accent"])
+        style.configure("Vertical.TScrollbar", background=p["border"],
+                        troughcolor=p["bg"], bordercolor=p["bg"], arrowcolor=p["fg_muted"])
+        style.configure("Horizontal.TScrollbar", background=p["border"],
+                        troughcolor=p["bg"], bordercolor=p["bg"], arrowcolor=p["fg_muted"])
+
+        # 标签页 —— 已改为自绘导航（见 _show_page），此样式不再使用
+        # 分隔线
+        style.configure("TSeparator", background=p["border"])
+
+        # 切换按钮文案
+        self.theme_btn.config(text=f"主题：{p['name']}")
+
+        # 重绘自绘导航（macOS 下划线）
+        if self.nav_items:
+            self._show_page(self._current_page)
+
+    def set_status(self, text, kind="neutral"):
+        """主题感知的状态栏文本。kind: neutral / success / warning / error"""
+        color = {
+            "neutral": self.colors["fg_muted"],
+            "success": self.colors["success"],
+            "warning": self.colors["warning"],
+            "error": self.colors["error"],
+        }[kind]
+        self.status_lbl.config(text=text, foreground=color)

@@ -16,11 +16,10 @@ if sys.platform == 'win32':
             pass
 
 import tkinter as tk
-from ttkthemes import ThemedTk
 from ui.app import App
 
 def main():
-    root = ThemedTk(theme="arc")
+    root = tk.Tk()
     app = App(root)
     root.mainloop()
 
