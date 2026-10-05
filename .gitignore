@@ -12,3 +12,13 @@ Thumbs.db
 filmsheet_config.json
 *.log
 .venv/
+# WorkBuddy 本地工作数据（记忆/实验产物），不入库
+.workbuddy/
+# Codex/agent 工具链自带的通用方法论 skills，与本项目代码无关
+.codex-skills/
+# 独立 Git 仓库（iOS/Kivy 版，有自己的 remote），不作为子模块嵌入
+filmsheet_ios/
+# PyInstaller 自动生成的 onefile spec，与手写的 main.spec 重复
+/FilmSheet.spec
+# pytest 缓存
+.pytest_cache/
