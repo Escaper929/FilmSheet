@@ -120,4 +120,34 @@ def draw_icon(canvas, name, cx, cy, size, color, tags=(), bg=None):
             add(canvas.create_oval(cx - s * 0.15, cy - s * 1.05, cx + s * 1.5, cy + s * 0.6,
                                    fill=bg, outline="", tags=tags))
 
+    elif name == "archive":
+        # 归档盒：盒盖 + 盒体 + 标签
+        add(_line(canvas, [cx - s * 0.92, cy - s * 0.52, cx + s * 0.92, cy - s * 0.52],
+                  color, w, tags))
+        add(_poly(canvas, [cx - s * 0.78, cy - s * 0.2, cx + s * 0.78, cy - s * 0.2,
+                           cx + s * 0.78, cy + s * 0.82, cx - s * 0.78, cy + s * 0.82],
+                  color, w, tags))
+        add(_line(canvas, [cx - s * 0.28, cy + s * 0.2, cx + s * 0.28, cy + s * 0.2],
+                  color, w, tags))
+
+    elif name == "search":
+        # 放大镜：镜圈 + 斜柄
+        r = s * 0.62
+        add(canvas.create_oval(cx - s * 0.42 - r, cy - s * 0.42 - r,
+                               cx - s * 0.42 + r, cy - s * 0.42 + r,
+                               outline=color, width=w, tags=tags))
+        add(_line(canvas, [cx + s * 0.02, cy + s * 0.02, cx + s * 0.82, cy + s * 0.82],
+                  color, w, tags))
+
+    elif name == "trash":
+        # 垃圾桶：盖 + 桶身 + 竖线
+        add(_line(canvas, [cx - s * 0.8, cy - s * 0.52, cx + s * 0.8, cy - s * 0.52],
+                  color, w, tags))
+        add(_poly(canvas, [cx - s * 0.6, cy - s * 0.28, cx + s * 0.6, cy - s * 0.28,
+                           cx + s * 0.46, cy + s * 0.86, cx - s * 0.46, cy + s * 0.86],
+                  color, w, tags))
+        for dx in (-0.2, 0.2):
+            add(_line(canvas, [cx + dx * s, cy - s * 0.06, cx + dx * s, cy + s * 0.6],
+                      color, w, tags))
+
     return items

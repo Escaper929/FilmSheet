@@ -76,6 +76,8 @@ class RoundedCard(ThemedMixin, tk.Frame):
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
         # Canvas 的 lower 被重载为 tag_lower，把画布压到 body 之下要走原生 Tk 命令
         self.canvas.tk.call('lower', self.canvas._w)
+        from ui.aa import CanvasAA
+        self._aa = CanvasAA(self.canvas)
 
         # inner = 卡片表面容器；标题头与内容区都是它的子级，
         # 这样内容区可以自由使用 grid，不会和标题头的 pack 打架。
@@ -111,13 +113,23 @@ class RoundedCard(ThemedMixin, tk.Frame):
     def _redraw(self, _event=None):
         from ui.icons import draw_icon
         c = self.canvas
-        c.delete("card")
         w, h = self.winfo_width(), self.winfo_height()
         if w < 6 or h < 6:
             return
-        round_rect(c, 0.5, 0.5, w - 0.5, h - 0.5, self.radius,
-                   fill=self._colors["surface"],
-                   outline=self._colors["border"], width=1, tags="card")
+        # 卡片是最大的圆角形状，也是最容易看出锯齿的地方（四个角都外露），
+        # 所以底板走 PIL 抗锯齿位图。
+        #
+        # 顺序必须 drop_tag → delete → 画新图：
+        # 先 drop_tag 才能用 find_withtag 找到旧图元并丢掉 PhotoImage 引用；
+        # 若先 delete("card")，图元已从画布消失，find_withtag 返回空，
+        # 引用就成了清不掉的孤儿（实测重绘 11 次后残留 11 个 PhotoImage）。
+        self._aa.drop_tag("card")
+        c.delete("card")
+        self._aa.prune()          # 兜底：清掉任何没带 tag 的孤儿引用
+        self._aa.round_rect(w, h, self.radius,
+                            fill=self._colors["surface"],
+                            outline=self._colors["border"], outline_width=1,
+                            tag="card")
         c.tag_lower("card")
         if self.title_icon:
             c.delete("headicon")
@@ -139,11 +151,9 @@ class RoundedCard(ThemedMixin, tk.Frame):
         for frame in (self.inner, self._head, self.body):
             if frame is not None:
                 frame.configure(bg=p["surface"])
-        for child in self.body.winfo_children():
-            if isinstance(child, tk.Frame):
-                child.configure(bg=p["surface"])
-            elif isinstance(child, tk.Label):
-                child.configure(bg=p["surface"], fg=p["fg"])
+        # 递归修正内部所有 ttk 控件 —— 原来只处理 body 的直接子控件，
+        # 深层嵌套里的 ttk.Label 依然是页面底色，文字后面就衬出一块异色矩形。
+        self._fix_ttk(self.inner)
         if self._title:
             self._title.configure(bg=p["surface"], fg=p["fg"],
                                   font=f["card_title"])
@@ -151,6 +161,54 @@ class RoundedCard(ThemedMixin, tk.Frame):
         if hd is not None:
             hd.configure(bg=p["surface"])
         self._redraw()
+
+    # ttk控件走 style，不接受 configure(bg=) —— 要靠 style 切换。
+    # 这些样式在 App._apply_theme 里定义（Card.TLabel 等）。
+    _TTK_STYLE_MAP = {
+        "TLabel": "Card.TLabel",
+        "Muted.TLabel": "CardMuted.TLabel",
+        "FieldLabel.TLabel": "CardTitle.TLabel",
+        "Card.TLabel": "Card.TLabel",
+        "CardMuted.TLabel": "CardMuted.TLabel",
+        "CardTitle.TLabel": "CardTitle.TLabel",
+    }
+
+    def _fix_ttk(self, widget, depth=0):
+        """把子树里的 ttk.Label / ttk.Frame 换到卡片专用样式。
+
+        tk.Label（不是 ttk）用 configure(bg=) 直接改；ttk 的必须换 style。
+        深度设上限防意外 —— 卡片内容不会超过十几层。
+        """
+        if depth > 20:
+            return
+        try:
+            cls = widget.winfo_class()
+        except tk.TclError:
+            return
+        # ttk.Label 的 winfo_class 是 "TLabel"，与 tk.Label 的 "Label" 不同
+        if cls in ("Label", "TLabel"):
+            try:
+                cur = str(widget.cget("style") or ("TLabel" if cls == "TLabel" else ""))
+                if cls == "TLabel":
+                    target = self._TTK_STYLE_MAP.get(cur, "Card.TLabel")
+                    widget.configure(style=target)
+                else:
+                    widget.configure(bg=self._colors["surface"], fg=self._colors["fg"])
+            except tk.TclError:
+                pass
+        elif cls in ("Frame", "TFrame") and widget is not self.inner:
+            try:
+                widget.configure(bg=self._colors["surface"])
+            except tk.TclError:
+                # ttk.Frame 没有 bg 选项，只能靠 TFrame 的 style；
+                # TFrame 在页面与卡片里都是 bg 色，这里额外给卡片内的
+                # 嵌套 Frame 用 Card.TFrame。
+                try:
+                    widget.configure(style="Card.TFrame")
+                except tk.TclError:
+                    pass
+        for child in widget.winfo_children():
+            self._fix_ttk(child, depth + 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -163,6 +221,12 @@ def _button_palette(p, variant, state):
         return p["hover"] if variant != "ghost" else p["bg"], p["disabled"], "", None
     if variant == "accent":
         return p["accent"], p["accent_fg"], "", p["accent_hover"]
+    if variant == "danger":
+        # 破坏性操作用红色，和主操作在视觉上分开 ——
+        # 否则「删除」和「打开」长得一样，用户容易误点。
+        fill = p["error"]
+        fg = "#FFFFFF" if fill not in ("#FFFFFF", "#F5F5F7", "#F1EFE8") else p["error"]
+        return fill, fg, "", p["error"]
     if variant == "secondary":
         return p["surface"], p["fg"], p["border"], p["hover"]
     if variant == "ghost":
@@ -206,6 +270,9 @@ class PillButton(ThemedMixin, tk.Canvas):
                          highlightthickness=0, bd=0, takefocus=1)
         self._h = height
         self._radius = height / 2.0
+        # 抗锯齿图元层。必须在 super().__init__ 之后建立（需要真实 canvas）。
+        from ui.aa import CanvasAA
+        self._aa = CanvasAA(self)
         if stretch:
             self.pack_propagate(False) if False else None
 
@@ -274,8 +341,14 @@ class PillButton(ThemedMixin, tk.Canvas):
             if self.variant == "accent":
                 fill = self._colors["accent_active"]
 
-        round_rect(c, 0.5, 0.5, w - 0.5, h - 0.5, self._radius,
-                   fill=fill, outline=border or fill, width=1 if border else 0)
+        # 底板走 PIL 抗锯齿位图 —— Tk 的 smooth 样条光栅化到像素时不做边缘混合，
+        # 在 Retina 上就是肉眼可见的锯齿（见 ui/aa.py 的说明）。
+        # 文字与图标仍用 Canvas 矢量画：字形边缘交给 Tk 才不会糊。
+        # 上面的 delete("all") 已经清过画面，这里只需 prune 掉失效的
+        # PhotoImage 引用（否则 hover 高频重绘会泄漏）。
+        self._aa.prune()
+        self._aa.round_rect(w, h, self._radius, fill=fill, outline=border,
+                           outline_width=1 if border else 0)
 
         if self.focus_get() is self:
             round_rect(c, 2.0, 2.0, w - 2.0, h - 2.0, self._radius - 1.5,
@@ -321,6 +394,8 @@ class SegmentedControl(ThemedMixin, tk.Canvas):
         self._bg = bg or colors["bg"]
         super().__init__(parent, height=height, bg=self._bg,
                          highlightthickness=0, bd=0, takefocus=0)
+        from ui.aa import CanvasAA
+        self._aa = CanvasAA(self)
         self.bind("<Configure>", lambda e: self._redraw())
         self.bind("<Button-1>", self._on_click)
         self.bind("<Motion>", self._on_motion)
@@ -374,8 +449,9 @@ class SegmentedControl(ThemedMixin, tk.Canvas):
         if w < 10:
             return
         p, pad, h = self._colors, self._pad, self._h
-        round_rect(c, 0, 0, w, h, h / 2.0, fill=p["seg_track"],
-                   outline=p["seg_track"], width=0)
+        # 导航底轨与选中药丸都走抗锯齿位图（药丸是全圆角，锯齿最显眼）
+        self._aa.prune()
+        self._aa.round_rect(w, h, h / 2.0, fill=p["seg_track"], tag="seg")
 
         n = len(self.items)
         if n == 0:
@@ -383,9 +459,9 @@ class SegmentedControl(ThemedMixin, tk.Canvas):
         seg = (w - pad * 2) / float(n)
 
         # 选中项药丸
-        x0 = pad + self.index * seg
-        round_rect(c, x0 + 1.5, 2.5, x0 + seg - 1.5, h - 2.5, (h - 5) / 2.0,
-                   fill=p["seg_thumb"], outline=p["seg_thumb"], width=0)
+        x0 = int(pad + self.index * seg)
+        self._aa.round_rect(int(seg) - 3, h - 5, (h - 5) / 2.0,
+                            fill=p["seg_thumb"], x=x0 + 1, y=2)
 
         fr = self._fonts
         for i, item in enumerate(self.items):
