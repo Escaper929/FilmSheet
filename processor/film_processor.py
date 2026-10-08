@@ -29,8 +29,12 @@ from .image_pipeline import (
 )
 
 class FilmProcessor:
-    def __init__(self, config):
+    def __init__(self, config, on_done=None):
         self.config = config
+        # 可选回调 (config, outputs) -> None，渲染成功后触发。
+        # 归档库靠它记录「这卷拍了多少张、产物在哪」；不传就完全不触发，
+        # 现有调用方（api/main.py、测试、脚本）行为不变。
+        self.on_done = on_done
         self._max_workers = min(4, os.cpu_count() or 1)
         self.is_cancelled = False
         self.engine = Strict135FilmEngine(dpi=300)
@@ -168,6 +172,43 @@ class FilmProcessor:
     def cancel(self):
         self.is_cancelled = True
 
+    # ------------------------------------------------------------------
+    # 归档回写
+    # ------------------------------------------------------------------
+
+    def _notify_done(self, config: dict, frame_count: int, output_specs: list):
+        """渲染成功后通知外部（归档库）。
+
+        这里刻意包了try/except：归档是附加功能，写盘失败、目录无权限、
+        数据格式问题都不该让用户已经拿到的图「变成失败」。失败只记日志。
+        """
+        if self.on_done is None:
+            return
+        outputs = []
+        for path, style in output_specs:
+            if not path:
+                continue
+            w = h = 0
+            try:
+                with Image.open(path) as im:
+                    w, h = im.size
+            except Exception:
+                pass          # 拿不到尺寸不致命，档案里存0即可
+            outputs.append({"path": path, "style": style,
+                            "width": w, "height": h})
+        payload = dict(config)
+        payload["frame_count"] = frame_count
+        try:
+            self.on_done(payload, outputs)
+        except Exception as e:
+            logging.getLogger(__name__).warning("归档回写失败（不影响出图）: %s", e)
+
+    def _succeed(self, config: dict, frame_count: int,
+                 output_specs: list = None) -> str:
+        """所有成功路径的统一出口：先归档，再返回 success。"""
+        self._notify_done(config, frame_count, output_specs or [])
+        return "success"
+
     def crop_to_135_ratio(self, img):
         """Delegate to image_pipeline for future portability."""
         from .image_pipeline import _crop_to_135_ratio as _crop
@@ -284,6 +325,7 @@ class FilmProcessor:
             if single_photo_mode and len(files) > 1:
                 # Single-photo batch: each image gets its own output
                 results = []
+                specs = []          # 实际产物 (path, style)，供归档回写
                 styles = [config.get('render_style', 'lightbox')] if not batch_enabled else list(STYLE_COLORS.keys())
 
                 for img_idx, img in enumerate(processed_imgs):
@@ -330,9 +372,11 @@ class FilmProcessor:
                         else:
                             result = batch_proc._render_120(single_img, single_status, single_progress)
                         results.append(result)
+                        if result == "success":
+                            specs.append((batch_config['output_path'], style))
 
                 if all(r == "success" for r in results):
-                    return "success"
+                    return self._succeed(config, len(files), specs)
                 elif "已取消" in results:
                     return "已取消"
                 else:
@@ -345,6 +389,7 @@ class FilmProcessor:
                 styles = [config.get('render_style', 'lightbox')]
 
             results = []
+            specs = []
             for style_idx, style in enumerate(styles):
                 if self.is_cancelled:
                     return "已取消"
@@ -379,9 +424,11 @@ class FilmProcessor:
                              else batch_proc._render_120(processed_imgs, status_callback, progress_callback)
 
                 results.append(result)
+                if result == "success":
+                    specs.append((batch_config['output_path'], style))
 
             if all(r == "success" for r in results):
-                return "success"
+                return self._succeed(config, len(files), specs)
             elif "已取消" in results:
                 return "已取消"
             else:

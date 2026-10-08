@@ -4,6 +4,7 @@ import os
 import sys
 import json
 import platform
+import tempfile
 import subprocess
 
 APP_NAME = "FilmSheet"
@@ -142,7 +143,17 @@ def load_config():
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
+            if isinstance(loaded, dict):
                 cfg.update(loaded)
+            else:
+                # 根节点不是对象（比如早期误写成数组）——不能 update，
+                # 但也不该让整个应用起不来，按默认值走。
+                _backup_bad_config(config_path, '根节点不是对象')
+        except json.JSONDecodeError as e:
+            # 关键：JSONDecodeError 不是 OSError 的子类，原来只except
+            # (OSError, FileNotFoundError) 会让它直接抛穿 —— 配置文件一旦损坏，
+            # 应用启动即崩，用户的模板和参数历史全丢。
+            _backup_bad_config(config_path, str(e))
         except (OSError, FileNotFoundError):
             pass
     # Clean up stale render_style values (e.g. removed styles)
@@ -150,15 +161,60 @@ def load_config():
         cfg["render_style"] = "lightbox"
     return cfg
 
-def save_config(data):
-    config_dir = _config_dir()
-    os.makedirs(config_dir, exist_ok=True)
-    config_path = os.path.join(config_dir, CONFIG_FILE)
+
+def _backup_bad_config(reason: str, detail: str = ""):
+    """把损坏的配置改名备份，绝不原地覆盖。
+
+    有了它，配置损坏时最坏的结果是「回到默认设置」，而不是「数据被空配置
+    覆盖后彻底消失」。
+    """
+    import time
+    cfg_dir = _config_dir()
+    src = os.path.join(cfg_dir, CONFIG_FILE)
     try:
-        with open(config_path, 'w', encoding='utf-8') as f:
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dst = f"{src}.corrupt-{stamp}"
+        os.replace(src, dst)
+        print(f"配置文件无法解析（{detail}），已备份为 {os.path.basename(dst)}",
+              file=sys.stderr)
+        return dst
+    except OSError:
+        print(f"配置文件无法解析（{detail}）且备份失败", file=sys.stderr)
+        return None
+
+def save_config(data):
+    """原子写配置文件。
+
+    原来直接 ``open(path,'w')`` 覆写：写到一半崩溃 / 磁盘满 / 断电，会留下一个
+    截断的 JSON。下次启动 load_config 抛JSONDecodeError被 except 吞掉，
+    **用户的模板、参数历史、全部设置一起没了**。改成临时文件 + os.replace，
+    失败时旧文件完好。
+
+    与 archive/store.py 的写入策略一致。
+    """
+    config_dir = _config_dir()
+    try:
+        os.makedirs(config_dir, exist_ok=True)
+    except OSError:
+        return False
+    config_path = os.path.join(config_dir, CONFIG_FILE)
+    tmp_path = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=config_dir, prefix=".config-", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())      # 落盘再替换，断电也不丢
+        os.replace(tmp_path, config_path)   # 同分区原子替换
+        tmp_path = None
+        return True
     except Exception:
-        pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return False
 
 def add_pack_image_history(path):
     cfg = load_config()
