@@ -22,3 +22,7 @@ filmsheet_ios/
 /FilmSheet.spec
 # pytest 缓存
 .pytest_cache/
+# macOS Finder 生成的目录元数据
+.DS_Store
+# 一次误在 Windows 上执行 `find ... > null` 留下的空输出文件，无内容意义
+/null
