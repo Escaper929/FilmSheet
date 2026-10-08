@@ -26,8 +26,17 @@ processor/               # Core rendering pipeline
   edge_text.py           # Pure function: brand/type mapping (Kodak→KODAK, etc.)
   config_schema.py       # Field definitions, validation, sanitization
   filename_utils.py      # Output filename generation from info fields
+archive/                 # Film roll archive (archive library) — no tkinter import
+  models.py              # Roll entity — one roll = one archive record
+  store.py               # JSON persistence — atomic write, corruption recovery, migration
+  service.py             # ArchiveService facade — auto/manual filing, query, import
+  thumbs.py              # Thumbnail generation + disk cache
 ui/
   app.py                 # Tkinter desktop app — UI, templates, preview, batch export
+  rounded.py             # Canvas-drawn widgets (RoundedCard/PillButton/SegmentedControl)
+  aa.py                  # Antialiased shape rasterizer (PIL supersampling + LRU cache)
+  icons.py               # Code-drawn icon set
+  archive_page.py        # Archive library page — grid, search, filters, detail panel
 api/
   main.py                # FastAPI server — POST /render, GET /health, serves index.html
   index.html             # Mobile web frontend (single-page, vanilla JS)
@@ -59,6 +68,103 @@ Abstract base that subclasses share. Key methods:
 - Templates saved in config for quick preset switching
 - Pack image history (last 30 paths)
 
+### Film Roll Archive
+Turns the one-shot render task into a persisted record. Layers are strictly
+one-directional — `models` → `store` → `service` → `thumbs`, none import tkinter,
+so the desktop app and any future API/Web frontend can share them.
+
+- **The archive grid must compute its column count from the grid canvas's own
+  width**, never from the page width. The page also holds a 286px detail panel;
+  sizing columns against the page pushes cards underneath it (visible as the
+  rightmost card half-covered). `ArchivePage._grid_avail_width()` exists for this.
+- **Card height is computed, never hardcoded.** `card_text_height(fonts, lines)`
+  measures the real `linespace` and multiplies by the actual row count (3 without
+  a camera, 4 normally, 5 with the "file missing" warning). A hardcoded
+  `CARD_TEXT_H` silently clipped the date row as soon as a field was added.
+- Rows are sized with `minsize` (from `card_height(fonts, warn=True)`) and cards
+  use `sticky="n"` — `"nsew"` stretches them and distorts the text area.
+
+- **Roll id is derived** from `roll_no + shoot_date + film` (sha1), never uuid.
+  Re-rendering the same roll must land on the same record, otherwise the library
+  fills with duplicates.
+- **Merge, never replace** (`Roll.merge_from`) — a second lightbox render must not
+  drop the previous contact sheet; empty info fields don't overwrite filled ones.
+- **Atomic writes** — temp file + `fsync` + `os.replace`. Archive data is
+  long-lived; a half-written file must not destroy everything.
+- **Corruption doesn't lose data** — an unparseable file is renamed to
+  `.corrupt-<timestamp>` and treated as an empty library.
+- **Deleting a roll keeps its files** by default. The archive is an index, not
+  ownership.
+- **Location is resolvable** — `FILMSHEET_ARCHIVE_DIR` env var >
+  `archive_dir` in `filmsheet_config.json` > platform config dir. The env var wins
+  because it works even when the config file itself is unreadable. Moving the
+  library copies first and only then rewrites the config, so a failed copy leaves
+  the old location authoritative.
+- `FilmProcessor(config, on_done=cb)` — `on_done` is optional. Not passing it
+  leaves behavior identical (API path). Callback exceptions are swallowed and
+  logged: an archive write failure must not turn an already-rendered image into
+  a reported failure.
+- The archive page receives its available width from `App._layout_pages()` via
+  `on_container_resized()`, not from its own `<Configure>` binding.
+
+### UI Rendering — no antialiasing in Tk
+Tk Canvas has **no antialiasing API**. `create_polygon(..., smooth=True)` emits
+cubic Béziers (visible as `curveto` in exported PostScript) but rasterizes them to
+pixels **without color blending** — edges are hard steps, and on a Retina display
+(1 logical px = 2 physical px) the steps are magnified into visible jaggies.
+
+`ui/aa.py` works around it: draw the shape with PIL at N× size, then
+`resize(..., LANCZOS)` back down. The resize performs the edge blending, which
+*is* antialiasing. Measured at SS=4: 136x34 button ≈ 1.2 ms, 186x200 card ≈ 11.5 ms.
+
+- `CanvasAA` wraps a Canvas and holds `PhotoImage` references — Tk garbage-collects
+  them otherwise and the widget renders blank.
+- `prune()` drops references for items already removed by `delete("all")`;
+  `drop_tag(tag)` must be called **before** `canvas.delete(tag)`, otherwise
+  `find_withtag` can't find the stale ids and the `PhotoImage`s leak.
+- Widgets draw their **background shape as a bitmap but text and icons as vectors** —
+  letting Tk rasterize glyphs keeps them crisp.
+- Only `SlimScrollbar` is left vector-drawn (plain rectangles, no curved edges).
+
+`CanvasAA` holds `PhotoImage` references — Tk garbage-collects them otherwise
+and the widget renders blank. Two ordering rules matter:
+- `drop_tag(tag)` must be called **before** `canvas.delete(tag)`; afterwards
+  `find_withtag` can't find the stale ids and the references leak forever.
+- `prune()` is the safety net for `delete("all")` paths, and also cleans up when
+  the ordering above was wrong.
+
+### ttk background inside cards
+`TLabel` / `Muted.TLabel` use the **page** background, because most labels live
+directly on the page. Labels inside a `RoundedCard` sit on the **card surface**,
+so they must use `Card.TLabel` / `CardMuted.TLabel` / `CardTitle.TLabel` — otherwise
+each label gets a mismatched rectangle behind the text, glaring in dark mode.
+
+`RoundedCard._apply` calls `_fix_ttk()` to re-style its whole subtree
+recursively; it previously touched only the direct children of `body`, which left
+deeply nested labels wrong. `TCheckbutton` / `TRadiobutton` already used surface.
+
+`tests/test_ui_aa.py` locks this in by asserting the presence of
+**semi-transparent edge pixels**. Do not measure antialiasing along a diagonal —
+that path misses the blend on shapes ≥80px and reports zero.
+
+### Config I/O Robustness
+`utils/helpers.save_config()` writes atomically (temp file + `fsync` +
+`os.replace`) and returns a bool. A direct `open(path,'w')` overwrite could leave
+a truncated JSON on crash; the next launch would then read it back.
+
+`load_config()` catches `json.JSONDecodeError` (which is **not** an `OSError`
+subclass) and renames an unparseable file to `.corrupt-<timestamp>` before
+falling back to defaults. Without that, a corrupted config crashed the app at
+startup and took the user's templates with it.
+
+### Packaging
+`main.spec` lists every first-party package explicitly (including `archive.*`).
+PyInstaller's static analysis misses function-body attribute access such as
+`thumbs_mod.clear_thumb(...)`. Verify with a real build, not just import checks:
+`python -m PyInstaller main.spec --distpath /tmp/x/dist --workpath /tmp/x/build`,
+then confirm the modules appear in `Analysis-00.toc` and the app survives launch.
+`setup.py` (py2app) needs the same list in `packages` and `includes`.
+
 ### Edge Text Generation
 `edge_text.py` is a pure function that maps raw film names to structured edge text:
 - Chinese brands → English (柯达→KODAK, 富士→FUJIFILM, etc.)
@@ -74,8 +180,16 @@ Two render styles defined in `helpers.py` STYLE_COLORS:
 
 ### Tests
 ```bash
-python -m unittest tests.test_core -v    # Run all core tests
+python -m unittest tests.test_core -v       # Rendering pipeline (no GUI)
+python -m unittest tests.test_archive -v   # Archive library (no GUI)
+python -m unittest tests.test_config -v    # Config I/O robustness (no GUI)
+python -m unittest tests.test_ui_aa -v     # Antialiasing quality + performance
+python tests/selftest_archive_ui.py        # Archive UI headless self-test
+python tests/preview_archive_ui.py         # Render the archive page to a PNG
 ```
+Tests need Pillow. On macOS the WorkBuddy-managed Python lacks it — use
+`/Library/Frameworks/Python.framework/Versions/3.14/bin/python3`.
+`tests.test_api` additionally needs `httpx2`.
 
 ### Desktop App
 ```bash

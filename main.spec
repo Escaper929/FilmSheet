@@ -2,24 +2,41 @@
 
 a = Analysis(
     ['main.py'],
-    pathex=['.', 'ui', 'processor', 'engine', 'utils', 'filmsheet'],
+    pathex=['.', 'ui', 'processor', 'engine', 'utils', 'filmsheet', 'archive'],
     binaries=[],
     datas=[],
     hiddenimports=[
         'ui',
+        'ui.rounded',
+        'ui.icons',
+        'ui.archive_page',
+        # ui.aa 是抗锯齿形状生成器。CanvasAA 在 PillButton/RoundedCard/
+        # SegmentedControl 的 __init__ 里是**函数体内导入**，PIL.ImageTk 更是
+        # 运行时按需 import —— 静态分析极易漏掉，漏了会在打包后启动即崩。
+        'ui.aa',
         'processor',
         'processor.renderers_135',
         'processor.renderers_120',
+        'processor.renderer',
         'processor.config_schema',
         'processor.edge_text',
         'processor.filename_utils',
         'processor.image_pipeline',
+        'processor.film_processor',
         'engine',
         'engine.film_engine',
         'utils',
         'utils.helpers',
         'filmsheet',
         'filmsheet._version',
+        # archive 包必须显式列出：ui/app.py 里的导入是模块级的，PyInstaller
+        # 能静态扫到，但 archive_page.py 里对 thumbs / store 的引用有部分是
+        # 在函数体内延迟取属性（如 thumbs_mod.clear_thumb），静态分析扫不到。
+        'archive',
+        'archive.models',
+        'archive.store',
+        'archive.service',
+        'archive.thumbs',
         'PIL',
         'PIL.Image',
         'PIL.ImageDraw',

@@ -12,6 +12,8 @@ from utils.helpers import load_config, save_config, add_pack_image_history, LABE
 from ui.rounded import (RoundedCard, PillButton, SegmentedControl,
                         SlimScrollbar, RoundedScale)
 from ui.icons import draw_icon
+from archive.service import ArchiveService
+from ui.archive_page import ArchivePage
 
 # 页面标题 + 分段导航图标（顺序即导航顺序）
 PAGES = [
@@ -19,6 +21,7 @@ PAGES = [
     ("画幅与排版", "grid"),
     ("外观", "palette"),
     ("拍摄信息", "camera"),
+    ("归档库", "archive"),
 ]
 
 # ::: 界面双主题调色板（macOS 风格） :::
@@ -104,6 +107,12 @@ class App:
         cfg = load_config()
         self.pack_history = cfg.get("pack_images", [])
 
+        # 归档库：领域层无 Tk 依赖，这里只做实例持有。
+        # 自动建卷默认开启，可在归档库页面关掉。
+        self.archive_service = ArchiveService()
+        self.archive_service.enabled = cfg.get("archive_auto", True)
+        self.archive_page = ArchivePage(self)
+
         # 确保子画幅有默认值
         sub_format = cfg.get("sub_format", "标准 36×24")
         if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "612", "617", "624"]:
@@ -145,6 +154,7 @@ class App:
 
         self.processor = None
         self.info_labels = {}
+        self.pending_roll = None      # 渲染成功后回写的卷宗（主线程用）
         self.font = _pick_font(root)          # 主字体（微软雅黑）
         self._font_widgets = []               # 需随主题更新字体的控件
         self._pages = []                      # 页面 wrapper 列表
@@ -184,6 +194,14 @@ class App:
         canvas.itemconfigure(self._pages_window, height=max(natural, h))
         try:
             canvas.configure(scrollregion=canvas.bbox("all"))
+        except tk.TclError:
+            pass
+        # 归档库内部有自己的网格，靠这里把实际可用宽度喂给它。
+        # 不用它自己绑 <Configure>：首次布局时宽度是 1，算出的列数会定型，
+        # 之后 canvas 再变宽也不会重排。
+        try:
+            if getattr(self, "archive_page", None) is not None:
+                self.archive_page.on_container_resized(w)
         except tk.TclError:
             pass
 
@@ -251,6 +269,29 @@ class App:
         }
 
     # ---------------- 便捷构造（自动登记，换肤时统一刷新） ----------------
+    @staticmethod
+    def _widget_alive(w) -> bool:
+        """控件是否仍存在（Tk destroy 之后 winfo_exists 会抛而不是返回 False）。"""
+        try:
+            return bool(w.winfo_exists())
+        except (tk.TclError, AttributeError):
+            return False
+
+    def _unregister_themed(self, widget):
+        """把已销毁的控件从换肤名单里摘掉。
+
+        动态创建又重建的控件（归档库卡片、详情按钮、对话框按钮）生命周期
+        短于 App，不注销就会在下次换肤时抛 "invalid command name"，
+        把整个 _apply_theme 打断，界面停在半换肤状态。
+        """
+        lst = getattr(self, "_themed", None)
+        if lst is None:
+            return
+        try:
+            lst.remove(widget)
+        except ValueError:
+            pass
+
     def _card(self, parent, title="", title_icon=None, radius=12, pad=15):
         c = RoundedCard(parent, self.colors, self.fonts, title=title,
                         title_icon=title_icon, radius=radius, pad=pad)
@@ -709,6 +750,11 @@ class App:
         self._refresh_tmpl_combo()
         self._update_batch_checkbox_label()
         self.auto_adjust_columns()
+
+        # ---- 归档库（放在最后建：它依赖前面建好的 controls 与主题）----
+        archive_page = self._add_page("归档库")
+        self.archive_page.build(archive_page)
+
         # 默认显示第一个页面
         self._show_page(0)
 
@@ -1097,8 +1143,23 @@ class App:
 
         # Import the image-processing stack only once the user starts work.
         from processor.film_processor import FilmProcessor
-        self.processor = FilmProcessor(config)
+        # on_done 把产物与张数回写归档库；归档失败不影响出图（processor 内部已兜住）
+        self.processor = FilmProcessor(config, on_done=self._on_render_done)
         threading.Thread(target=self.run_worker, daemon=True).start()
+
+    def _on_render_done(self, config: dict, outputs: list):
+        """渲染成功后的归档回写。在工作线程里被调用，故不能直接碰 Tk。"""
+        try:
+            roll = self.archive_service.record_render(config, outputs)
+        except Exception as e:
+            print(f"归档写入失败: {e}", file=sys.stderr)
+            return
+        if roll is None:
+            return
+        # 提示语交给 process_finished 统一显示，这里只存结果。
+        # 不在工作线程里调 root.after：那属于跨线程调度 Tk，
+        # 现有代码也是等run() 返回后才在主线程侧刷新。
+        self.pending_roll = roll
 
     def run_worker(self):
         upd_s = lambda m: self.root.after(0, lambda: self.set_status(m))
@@ -1113,13 +1174,85 @@ class App:
 
         if result == "success":
             self.progress_bar['value'] = 100
+            self._after_archive()
             self.set_status("FilmSheet Done!", "success")
-            messagebox.showinfo("Success", f"文件已保存至：\n{self.processor.config['output_path']}")
+            self._show_success_dialog()
         elif result == "已取消":
             self.set_status("已取消", "warning")
         else:
             self.set_status("失败", "error")
             messagebox.showerror("Error", result)
+
+    def _show_success_dialog(self):
+        out = self.processor.config.get('output_path', '')
+        msg = f"文件已保存至：\n{out}"
+        roll = self.pending_roll
+        if roll is not None:
+            msg += f"\n\n已归档到「归档库」：{roll.title}"
+        messagebox.showinfo("Success", msg)
+
+    def _after_archive(self):
+        """渲染成功后刷新归档库并提示归档结果（在主线程调用）。"""
+        roll = self.pending_roll
+        self.pending_roll = None
+        if roll is None:
+            return
+        try:
+            self.archive_page.refresh()
+        except Exception as e:
+            print(f"刷新归档库失败: {e}", file=sys.stderr)
+        err = self.archive_service.last_error
+        if err:
+            self.set_status(f"已生成并归档，但有警告：{err}", "warning")
+
+    # ------------------------------------------------------------------
+    # 从归档库回灌参数
+    # ------------------------------------------------------------------
+
+    def reload_from_archive(self, roll):
+        """把某卷的拍摄信息与渲染参数灌回参数页。
+
+        用于「用这卷参数重新出图」。只回填档案里确实存过的字段，
+        没存的保持当前值 —— 避免把用户刚调好的排版参数清空。
+        """
+        if roll is None:
+            return
+        cfg = roll.to_config()
+
+        from processor.config_schema import sanitize_config
+        merged = sanitize_config({**{k: v.get() if hasattr(v, 'get') else v
+                                    for k, v in self.vars.items()},
+                                  **{k: v for k, v in cfg.items() if v not in ("", None)}})
+
+        for key, val in merged.items():
+            var = self.vars.get(key)
+            if var is None:
+                continue
+            try:
+                if isinstance(var, tk.BooleanVar):
+                    var.set(bool(val))
+                elif isinstance(var, tk.IntVar):
+                    var.set(int(val))
+                else:
+                    var.set(str(val))
+            except (tk.TclError, ValueError, TypeError):
+                pass        # 单个字段类型不符不该中断整轮回灌
+
+        # 派生控件要跟着刷一遍，否则下拉框还停在旧值
+        if hasattr(self, "sub_combo"):
+            try:
+                self.toggle_sub_format()
+            except tk.TclError:
+                pass
+        try:
+            self.update_ratio_label()
+            self._update_info_labels()
+            self.refresh_pack_combo()
+        except tk.TclError:
+            pass
+
+        self._show_page(0)
+        self.set_status(f"已载入「{roll.title}」的参数，可直接开始生成", "success")
 
     def cancel_process(self):
         if self.processor:
@@ -1176,6 +1309,18 @@ class App:
         style.configure("TLabel", background=p["bg"], foreground=p["fg"], font=fonts["body"])
         style.configure("Muted.TLabel", background=p["bg"], foreground=p["fg_muted"],
                         font=fonts["caption"])
+        # 卡片内的标签必须用 surface 而不是 bg —— 卡片底板是 surface 色，
+        # 而 TLabel 默认跟着页面底色走，于是文字后面会衬出一块深色矩形
+        # （深色主题下尤其刺眼）。TCheckbutton/TRadiobutton 早已用 surface，
+        # 这里把 Label 补齐成一致。
+        style.configure("Card.TLabel", background=p["surface"], foreground=p["fg"],
+                        font=fonts["body"])
+        style.configure("CardMuted.TLabel", background=p["surface"],
+                        foreground=p["fg_muted"], font=fonts["caption"])
+        style.configure("CardTitle.TLabel", background=p["surface"],
+                        foreground=p["fg"], font=fonts["card_title"])
+        # 卡片内嵌套的 ttk.Frame —— TFrame 是页面底色，嵌套层需要 surface
+        style.configure("Card.TFrame", background=p["surface"])
         style.configure("FieldLabel.TLabel", background=p["surface"], foreground=p["fg"],
                         font=fonts["field_label"])
         style.configure("TCheckbutton", background=p["surface"], foreground=p["fg"],
@@ -1240,7 +1385,11 @@ class App:
         # 卡片换肤曾因为 master.cget('bg') 抛 TclError 被这样吞掉，
         # 结果切深色后 11 张卡片全部留在浅色，而日志里毫无痕迹。
         # 真有控件在换肤时抛错就该让它炸出来，否则界面就是「花」的。
-        for w in getattr(self, "_themed", ()):
+        # 但已被 destroy 的控件要从名单里剔除：它们换肤必然抛
+        # "invalid command name"，那是生命周期问题，不是样式问题。
+        self._themed = [w for w in getattr(self, "_themed", ())
+                        if self._widget_alive(w)]
+        for w in self._themed:
             w.apply_theme(p, fonts)
 
         # ---- 状态栏与主题切换按钮 ----
@@ -1253,6 +1402,12 @@ class App:
         # 顶部导航与滚动条重绘
         if getattr(self, "nav", None) is not None:
             self.nav.set_index(self._current_page)
+
+        # 归档库页自绘卡片与详情面板需按新调色板重建
+        try:
+            self.archive_page.apply_theme(p, fonts)
+        except Exception:
+            pass
 
         # 标题栏是 DWM 画的，必须单独跟上（否则深色下标题栏仍是白的）
         self._apply_titlebar_theme(p["name"] == "深色")

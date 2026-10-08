@@ -4,8 +4,14 @@ APP = ['main.py']
 DATA_FILES = []
 OPTIONS = {
     'argv_emulation': True,
-    'packages': ['PIL', 'tkinter', 'ttkthemes'],
-    'includes': ['tkinter', 'PIL', 'ttkthemes'],
+    # 必须列出全部自研包：py2app 只按packages 递归收集，
+    # 漏掉archive 会让打包后的 App 在 import 阶段直接崩。
+    'packages': ['PIL', 'tkinter', 'ttkthemes',
+                 'ui', 'processor', 'engine', 'utils', 'filmsheet', 'archive'],
+    'includes': ['tkinter', 'PIL', 'PIL.ImageTk', 'ttkthemes',
+                 'ui.rounded', 'ui.icons', 'ui.archive_page', 'ui.aa',
+                 'archive.models', 'archive.store', 'archive.service',
+                 'archive.thumbs'],
     'plist': {
         'CFBundleName': f'FilmSheet v{__import__("filmsheet._version", fromlist=["__VERSION__"]).__VERSION__} @Escaper',
         'CFBundleDisplayName': f'FilmSheet v{__import__("filmsheet._version", fromlist=["__VERSION__"]).__VERSION__} @Escaper',
