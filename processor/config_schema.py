@@ -35,6 +35,25 @@ PACK_POSITIONS = ["left", "right"]
 # All valid info languages
 INFO_LANGS = ["zh", "en"]
 
+# Sub-format is a *cross-field* constraint: its legal values depend on film_format.
+# It therefore cannot use the plain "valid" list mechanism in FIELD_DEFS.
+SUB_FORMATS_BY_FORMAT: dict[str, list[str]] = {
+    "135": SUB_FORMATS_135,
+    "120": SUB_FORMATS_120,
+}
+
+# Default sub-format per film format, used when a caller omits or blanks it.
+DEFAULT_SUB_FORMAT_BY_FORMAT: dict[str, str] = {
+    "135": SUB_FORMATS_135[0],
+    "120": "66",
+}
+
+
+def default_sub_format(film_format: str) -> str:
+    """Return the default sub-format for *film_format* (falls back to 135's)."""
+    return DEFAULT_SUB_FORMAT_BY_FORMAT.get(film_format, SUB_FORMATS_135[0])
+
+
 # Field definitions: {key: {"type": ..., "default": ..., "range": ...}}
 FIELD_DEFS: dict[str, dict[str, Any]] = {
     # Basic
@@ -118,7 +137,35 @@ def validate_config(cfg: dict) -> tuple[bool, list[str]]:
         if defs["type"] == "string" and not isinstance(val, str):
             errors.append(f"'{key}' must be string, got {type(val).__name__}")
 
+    errors.extend(_validate_sub_format(cfg))
+
     return len(errors) == 0, errors
+
+
+def _validate_sub_format(cfg: dict) -> list[str]:
+    """Validate sub_format against the chosen film_format.
+
+    The legal sub-formats differ per format (135 uses 36×24-style names, 120 uses
+    frame numbers), so this cannot live in FIELD_DEFS. Without this check an
+    unknown value silently falls back to a default ratio inside image_pipeline,
+    producing a wrong-aspect sheet with no error.
+    """
+    film_format = cfg.get("film_format", "135")
+    sub_format = cfg.get("sub_format")
+
+    # film_format itself is already checked against FILM_FORMATS; don't pile on.
+    if film_format not in SUB_FORMATS_BY_FORMAT:
+        return []
+    if sub_format is None or sub_format == "":
+        return []  # blank means "use the format default"
+
+    allowed = SUB_FORMATS_BY_FORMAT[film_format]
+    if sub_format not in allowed:
+        return [
+            f"'sub_format' invalid value '{sub_format}' for film_format "
+            f"'{film_format}', must be one of {allowed}"
+        ]
+    return []
 
 
 def sanitize_config(cfg: dict) -> dict:
@@ -126,6 +173,13 @@ def sanitize_config(cfg: dict) -> dict:
 
     Returns a new config dict with all known fields populated.
     """
+    # sub_format's default is film-format dependent, so it must be resolved
+    # *before* the generic FIELD_DEFS pass -- otherwise a missing sub_format
+    # picks up 135's default regardless of film_format.
+    film_format = cfg.get("film_format") or FIELD_DEFS["film_format"]["default"]
+    if not cfg.get("sub_format"):
+        cfg = {**cfg, "sub_format": default_sub_format(film_format)}
+
     result = {}
     for key, defs in FIELD_DEFS.items():
         val = cfg.get(key)
@@ -133,4 +187,5 @@ def sanitize_config(cfg: dict) -> dict:
             result[key] = defs["default"]
         else:
             result[key] = val
+
     return result

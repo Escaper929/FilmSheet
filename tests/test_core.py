@@ -29,9 +29,12 @@ from processor.image_pipeline import (
 from processor.config_schema import (
     validate_config,
     sanitize_config,
+    default_sub_format,
     FIELD_DEFS,
     SUB_FORMATS_135,
     SUB_FORMATS_120,
+    SUB_FORMATS_BY_FORMAT,
+    DEFAULT_SUB_FORMAT_BY_FORMAT,
     RENDER_STYLES,
     FILM_FORMATS,
 )
@@ -332,6 +335,78 @@ class TestConfigSchema(unittest.TestCase):
 
     def test_render_styles(self):
         self.assertEqual(RENDER_STYLES, ["lightbox", "contact_sheet"])
+
+
+class TestSubFormatValidation(unittest.TestCase):
+    """sub_format is a cross-field constraint: legal values depend on film_format."""
+
+    def test_each_declared_sub_format_validates_for_its_format(self):
+        for film_format, allowed in SUB_FORMATS_BY_FORMAT.items():
+            for sub_format in allowed:
+                with self.subTest(film_format=film_format, sub_format=sub_format):
+                    valid, errors = validate_config(
+                        {"film_format": film_format, "sub_format": sub_format}
+                    )
+                    self.assertTrue(valid, errors)
+
+    def test_unknown_sub_format_is_rejected(self):
+        valid, errors = validate_config({"film_format": "120", "sub_format": "nope"})
+        self.assertFalse(valid)
+        self.assertTrue(any("sub_format" in e for e in errors))
+
+    def test_135_sub_format_rejected_for_120(self):
+        """Cross-contamination is the exact failure this check exists to stop."""
+        valid, errors = validate_config({"film_format": "120", "sub_format": "标准 36×24"})
+        self.assertFalse(valid)
+        self.assertTrue(any("sub_format" in e for e in errors))
+
+    def test_120_sub_format_rejected_for_135(self):
+        valid, errors = validate_config({"film_format": "135", "sub_format": "645"})
+        self.assertFalse(valid)
+        self.assertTrue(any("sub_format" in e for e in errors))
+
+    def test_blank_sub_format_is_allowed(self):
+        """Empty means 'use the format default'; it must not be an error."""
+        for film_format in FILM_FORMATS:
+            with self.subTest(film_format=film_format):
+                valid, errors = validate_config({"film_format": film_format, "sub_format": ""})
+                self.assertTrue(valid, errors)
+
+    def test_missing_sub_format_is_allowed(self):
+        valid, errors = validate_config({"film_format": "120"})
+        self.assertTrue(valid, errors)
+
+    def test_unknown_film_format_does_not_double_report(self):
+        """film_format is already invalid on its own; don't pile sub_format on too."""
+        valid, errors = validate_config({"film_format": "999", "sub_format": "nope"})
+        self.assertFalse(valid)
+        self.assertFalse(any("sub_format" in e for e in errors))
+
+    def test_default_sub_format_per_format(self):
+        self.assertEqual(default_sub_format("135"), "标准 36×24")
+        self.assertEqual(default_sub_format("120"), "66")
+
+    def test_sanitize_fills_blank_sub_format_per_format(self):
+        """Otherwise the blank reaches the renderer and it picks its own default."""
+        self.assertEqual(
+            sanitize_config({"film_format": "120", "sub_format": ""})["sub_format"], "66"
+        )
+        self.assertEqual(
+            sanitize_config({"film_format": "135", "sub_format": ""})["sub_format"], "标准 36×24"
+        )
+        self.assertEqual(
+            sanitize_config({"film_format": "120"})["sub_format"], "66"
+        )
+
+    def test_sanitize_keeps_explicit_sub_format(self):
+        result = sanitize_config({"film_format": "120", "sub_format": "645"})
+        self.assertEqual(result["sub_format"], "645")
+
+    def test_default_map_covers_all_formats(self):
+        self.assertEqual(set(DEFAULT_SUB_FORMAT_BY_FORMAT), set(FILM_FORMATS))
+        for film_format, sub_format in DEFAULT_SUB_FORMAT_BY_FORMAT.items():
+            with self.subTest(film_format=film_format):
+                self.assertIn(sub_format, SUB_FORMATS_BY_FORMAT[film_format])
 
 
 # ====================================================================

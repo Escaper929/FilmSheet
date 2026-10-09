@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from PIL import Image, ImageOps
 
-from processor.config_schema import validate_config
+from processor.config_schema import default_sub_format, validate_config
 from processor.image_pipeline import process_135_image as _process_135_image
 from processor.image_pipeline import process_120_image as _process_120_image
 from processor.api_render import render_135, render_120
@@ -148,7 +148,7 @@ async def render_film_sheet(
     request: Request,
     images: list[UploadFile] = Form(..., description="胶片扫描图片（支持 JPG/PNG/TIFF/BMP，可多选）"),
     film_format: str = Form("135", description="画幅：135 或 120"),
-    sub_format: str = Form("标准 36×24", description="子画幅：135 支持 标准/半格/方形/XPan；120 支持 645/66/67/68/69/612/617"),
+    sub_format: str = Form("", description="子画幅：135 支持 标准/半格/方形/XPan；120 支持 645/66/67/68/69/612/617/624。留空则用该画幅的默认子画幅"),
     thumb_width: int = Form(400, ge=300, le=1200, description="缩略图宽度（300-1200px）"),
     columns: int = Form(6, ge=1, le=20, description="每行列数"),
     spacing: int = Form(20, ge=0, le=200, description="图片间距"),
@@ -221,6 +221,12 @@ async def render_film_sheet(
         "single_photo_mode": single_photo,
     }
 
+    # sub_format is a cross-field constraint (legal values depend on film_format).
+    # An omitted/blank value means "the default for this format", so fill it in
+    # before validation — otherwise 120 would be validated against 135's list.
+    if not sub_format:
+        config["sub_format"] = default_sub_format(film_format)
+
     is_valid, errors = validate_config(config)
     if not is_valid:
         return Response(content=f"配置错误: {'; '.join(errors)}", media_type="text/plain", status_code=400)
@@ -240,12 +246,12 @@ async def render_film_sheet(
             image.save(tmp_path)
             if film_format == "120":
                 processed = _process_120_image(
-                    tmp_path, sub_format or "66", thumb_width,
+                    tmp_path, config["sub_format"], thumb_width,
                     processing_mode, force_landscape,
                 )
             else:
                 processed = _process_135_image(
-                    tmp_path, thumb_width, processing_mode, force_landscape, sub_format,
+                    tmp_path, thumb_width, processing_mode, force_landscape, config["sub_format"],
                 )
             if processed is None:
                 raise HTTPException(status_code=422, detail=f"Unable to process {upload.filename or f'image {index + 1}'}")

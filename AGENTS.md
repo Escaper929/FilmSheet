@@ -226,8 +226,8 @@ GitHub Actions workflow at `.github/workflows/build.yml` builds macOS (.app) and
 
 ## Important Details
 
-- **120 API support is missing** — `api/main.py` line 555 returns HTTP 501 for film_format=="120". The desktop app and renderers support 120 fully; the API endpoint just needs to route to `_render_120_api()` similar to `_render_135_api()`.
-- **API uses its own inline 135 renderer** (`api/main.py:_render_135_api`) rather than importing `Renderer135` — this avoids UI dependencies but duplicates layout logic. Consider consolidating.
+- **`sub_format` is a cross-field constraint** — its legal values depend on `film_format` (135 uses `标准 36×24`/`半格 18×24`/`方形 24×24`/`XPan 65×24`; 120 uses frame numbers `645`/`66`/`67`/`68`/`69`/`612`/`617`/`624`). It can't use the plain `"valid"` list in `FIELD_DEFS`, so `config_schema._validate_sub_format()` checks it against `SUB_FORMATS_BY_FORMAT`. **Without this, an unknown value silently falls back to a default ratio inside `image_pipeline` and returns a wrong-aspect sheet with HTTP 200.** Blank/missing `sub_format` is legal and resolves via `default_sub_format(film_format)`; `sanitize_config()` must resolve it *before* the generic `FIELD_DEFS` pass, or a missing value picks up 135's default regardless of format.
+- **API shares the desktop renderers** — `processor/api_render.py` wraps `Renderer135` / `Renderer120` with a `FilmProcessorStub`, so `api/main.py` no longer duplicates layout logic (an earlier inline `_render_135_api` is gone). Both 135 and 120 are fully supported by the endpoint.
 - **Preview uses reduced thumb width (80px)** for speed — see `FilmProcessor.render_preview()`.
 - **Batch export** generates both lightbox and contact_sheet styles by creating a second FilmProcessor instance with swapped render_style.
 - **Perforation types**: KS (民用/rounded rectangle) vs BH (电影/cut-corner ellipse). Auto-detection based on film name keywords.
