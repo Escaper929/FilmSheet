@@ -17,7 +17,9 @@
 布局、层级、配色和信息密度 —— 也就是看界面"长什么样"。
 """
 import sys, os
-sys.path.insert(0, "/Users/lh/FilmSheet"); os.chdir("/Users/lh/FilmSheet")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+os.chdir(ROOT)
 
 import tkinter as tk, tkinter.messagebox as MB
 THEME = os.environ.get("FS_THEME", "")
@@ -230,7 +232,7 @@ for t, right, accent in [("预览", True, False), ("取消", True, False), ("开
     bb = d.textbbox((0,0), t, font=F(11))
     d.text((x+tw/2-(bb[2]-bb[0])/2, by+8), t, font=F(11), fill=col)
 
-out = os.environ.get("FS_OUT", "/Users/lh/FilmSheet/.preview_archive.png")
+out = os.environ.get("FS_OUT", os.path.join(ROOT, ".preview_archive.png"))
 img.save(out)
 print("已渲染:", out, img.size)
 root.destroy()
