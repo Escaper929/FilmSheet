@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""归档库测试。
+"""底片册测试。
 
 不依赖 GUI：archive/ 包刻意不导入 tkinter，所以这些测试可以直接跑。
 """
@@ -11,6 +11,7 @@ import time
 import tempfile
 import shutil
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -201,6 +202,41 @@ class TestRollEntity(TempStoreCase):
     def test_output_exists_is_false_for_missing(self):
         self.assertFalse(Output(path="/no/such/file.jpg").exists())
 
+    def test_primary_output_prefers_lightbox(self):
+        box = self.fake_output("light.jpg", "lightbox")
+        sheet = self.fake_output("contact.jpg", "contact_sheet")
+        roll = Roll(outputs=[Output.from_dict(sheet), Output.from_dict(box)])
+        self.assertEqual(roll.primary_output.path, box["path"])
+
+    def test_primary_output_skips_files_that_are_gone(self):
+        """回归：代表产物文件丢了、但还有别的产物在，缩略图必须出得来。
+
+        早先 primary_output 只看 style 不看 `exists()`，于是「文件不在了 +
+        后来补了新产物」的卷永远显示不出缩略图；而且 has_output() 为真，
+        卡片连「文件不在了」都不提示 —— 用户只看到一张怎么点都没图的空卡片。
+        """
+        gone = self.fake_output("gone.jpg", "lightbox")
+        roll = Roll(outputs=[Output.from_dict(gone)])
+        os.unlink(gone["path"])
+
+        live = self.fake_output("live.jpg", "contact_sheet")
+        roll.outputs.append(Output.from_dict(live))
+        roll._normalize()
+
+        self.assertTrue(roll.has_output())
+        self.assertEqual(roll.primary_output.path, live["path"])
+
+    def test_primary_output_falls_back_to_first_when_nothing_exists(self):
+        """全都失联时仍返回第一条 —— 调用方还要靠它区分「没产物」和「丢了」。"""
+        gone = self.fake_output("gone.jpg", "lightbox")
+        roll = Roll(outputs=[Output.from_dict(gone)])
+        os.unlink(gone["path"])
+        self.assertIsNotNone(roll.primary_output)
+        self.assertFalse(roll.primary_output.exists())
+
+    def test_primary_output_is_none_without_outputs(self):
+        self.assertIsNone(Roll().primary_output)
+
 
 # --------------------------------------------------------------------------- #
 #  持久化
@@ -301,6 +337,87 @@ class TestStore(TempStoreCase):
     def test_migrate_fills_missing_keys(self):
         data = migrate({})
         self.assertEqual(data["rolls"], [])
+
+    def test_one_bad_record_does_not_wipe_the_library(self):
+        """回归：任何一条记录抛异常，整库都会被改名备份、当空库启动。
+
+        用户看到的是「底片册还是空的」，得自己去目录里翻 `.corrupt-*` 手工修。
+        产物层和数据层早就逐条容错了，只有列表层是全有全无。
+        """
+        good = Roll.from_config(self.make_config())
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump({"schema_version": 1,
+                       "rolls": [good.to_dict(),
+                                 {"id": "r_poison"},
+                                 good.to_dict()]}, f)
+
+        real = Roll.from_dict
+
+        def boom(d):
+            if isinstance(d, dict) and d.get("id") == "r_poison":
+                raise ValueError("模拟一条读不出来的记录")
+            return real(d)
+
+        with mock.patch.object(Roll, "from_dict", staticmethod(boom)):
+            store = ArchiveStore(self.path)
+            rolls = store.all()
+
+        self.assertEqual(len(rolls), 1, "坏记录只该丢它自己")
+        self.assertEqual(rolls[0].roll_no, "A01")
+        self.assertIn("1 条", store.load_warning)
+        self.assertFalse([x for x in os.listdir(self.dir) if ".corrupt-" in x],
+                         "不该整库备份 —— 好数据还要继续用")
+        self.assertTrue([x for x in os.listdir(self.dir) if ".damaged-" in x],
+                        "被跳过的记录要留副本，否则下次保存就无声丢了")
+
+    def test_load_warning_clears_when_library_is_clean(self):
+        self.store.upsert(Roll.from_config(self.make_config()))
+        fresh = ArchiveStore(self.path)
+        fresh.all()
+        self.assertEqual(fresh.load_warning, "")
+
+
+# --------------------------------------------------------------------------- #
+#  日期排序键
+# --------------------------------------------------------------------------- #
+
+class TestDateKey(unittest.TestCase):
+    """`_date_key` 把随性写的日期收敛成可比较的元组。
+
+    紧凑写法（`20260304`）不是边角情况 —— 它正是本工具自己的产物命名格式。
+    """
+
+    def test_splits_compact_year_month_day(self):
+        self.assertEqual(S._date_key("20260304"), (2026, 3, 4))
+
+    def test_splits_compact_year_month(self):
+        self.assertEqual(S._date_key("202603"), (2026, 3, 0))
+
+    def test_common_separators_agree(self):
+        for s in ("2026-03-04", "2026/3/4", "2026.3.4", "2026年3月4日"):
+            self.assertEqual(S._date_key(s), (2026, 3, 4), s)
+
+    def test_year_only(self):
+        self.assertEqual(S._date_key("2026"), (2026, 0, 0))
+        self.assertEqual(S._date_key("2026年"), (2026, 0, 0))
+
+    def test_bare_year_and_compact_date_do_not_collide(self):
+        """回归：早先 20260304 被压成 (2026,0,0)，与裸 2026 撞成同一个排序键。"""
+        self.assertEqual(S._date_key("20260304"), S._date_key("2026-03-04"))
+        self.assertNotEqual(S._date_key("20260304"), S._date_key("2026"))
+
+    def test_compact_dates_keep_their_real_order(self):
+        keys = [S._date_key(d) for d in ("20260101", "20260201", "20261231")]
+        self.assertEqual(keys, sorted(keys))
+        self.assertEqual(len(set(keys)), 3, "三天不能塌成同一个键")
+
+    def test_empty_and_garbage_degrade_to_zero(self):
+        self.assertEqual(S._date_key(""), (0, 0, 0))
+        self.assertEqual(S._date_key("不知道"), (0, 0, 0))
+
+    def test_never_returns_more_or_fewer_than_three(self):
+        for s in ("20260304", "2026", "", "2026-03-04-05", "1月2日3时4分"):
+            self.assertEqual(len(S._date_key(s)), 3, s)
 
 
 # --------------------------------------------------------------------------- #
@@ -506,13 +623,39 @@ class TestService(TempStoreCase):
         roll = self.svc.create_manual({"roll_no": "X01"})
         self.assertIsNone(self.svc.ensure_thumb(roll))
 
+    def test_ensure_thumb_recovers_once_a_live_output_is_added(self):
+        """补录产物之后缩略图必须出得来（端到端的回归）。
+
+        路径：产物文件丢了 → 卡片提示「文件不在了」→ 用户「添加产物文件…」
+        补一条 → 新条目排在列表末尾 → 若代表产物仍指向那条失联的旧产物，
+        缩略图就永远出不来。这正是 primary_output 不看 exists() 的后果。
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("需要 Pillow")
+        gone = os.path.join(self.dir, "gone.jpg")
+        Image.new("RGB", (600, 400), (200, 100, 50)).save(gone)
+        roll = self.svc.record_render(
+            self.make_config(), [{"path": gone, "style": "lightbox"}])
+        os.unlink(gone)                      # 用户把图挪走了
+        self.assertIsNone(self.svc.ensure_thumb(self.store.get(roll.id)),
+                          "产物全失联时不该有缩略图")
+
+        live = os.path.join(self.dir, "live.jpg")
+        Image.new("RGB", (600, 400), (50, 100, 200)).save(live)
+        self.svc.add_output(roll.id, live, "contact_sheet")
+        thumb = self.svc.ensure_thumb(self.store.get(roll.id))
+        self.assertIsNotNone(thumb, "补了新产物之后缩略图必须能出来")
+        self.assertTrue(os.path.isfile(thumb))
+
 
 # --------------------------------------------------------------------------- #
 #  文件名解析（导入已有产物用）
 # --------------------------------------------------------------------------- #
 
 class TestArchiveLocation(unittest.TestCase):
-    """归档库位置解析：默认 / 配置 / 环境变量。"""
+    """底片册位置解析：默认 / 配置 / 环境变量。"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="filmsheet-loc-")
@@ -566,7 +709,7 @@ class TestArchiveLocation(unittest.TestCase):
         with open(pb, encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual([r["roll_no"] for r in data["rolls"]], ["X02"])
-        # 旧目录的文件不该被动 —— 那是另一个归档库的数据
+        # 旧目录的文件不该被动 —— 那是另一个底片册的数据
         self.assertEqual(os.path.getmtime(pa), before, "旧目录文件不应被改写")
         with open(pa, encoding="utf-8") as f:
             old = json.load(f)

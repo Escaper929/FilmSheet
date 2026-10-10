@@ -29,7 +29,7 @@ PAGES = [
     ("画幅与排版", "grid"),
     ("外观", "palette"),
     ("拍摄信息", "camera"),
-    ("归档库", "archive"),
+    ("底片册", "archive"),
 ]
 
 # ::: 界面双主题调色板（macOS 风格） :::
@@ -115,8 +115,8 @@ class App:
         cfg = load_config()
         self.pack_history = cfg.get("pack_images", [])
 
-        # 归档库：领域层无 Tk 依赖，这里只做实例持有。
-        # 自动建卷默认开启，可在归档库页面关掉。
+        # 底片册：领域层无 Tk 依赖，这里只做实例持有。
+        # 自动建卷默认开启，可在底片册页面关掉。
         self.archive_service = ArchiveService()
         self.archive_service.enabled = cfg.get("archive_auto", True)
         self.archive_page = ArchivePage(self)
@@ -214,7 +214,7 @@ class App:
             canvas.configure(scrollregion=canvas.bbox("all"))
         except tk.TclError:
             pass
-        # 归档库内部有自己的网格，靠这里把实际可用宽度喂给它。
+        # 底片册内部有自己的网格，靠这里把实际可用宽度喂给它。
         # 不用它自己绑 <Configure>：首次布局时宽度是 1，算出的列数会定型，
         # 之后 canvas 再变宽也不会重排。
         try:
@@ -298,7 +298,7 @@ class App:
     def _unregister_themed(self, widget):
         """把已销毁的控件从换肤名单里摘掉。
 
-        动态创建又重建的控件（归档库卡片、详情按钮、对话框按钮）生命周期
+        动态创建又重建的控件（底片册卡片、详情按钮、对话框按钮）生命周期
         短于 App，不注销就会在下次换肤时抛 "invalid command name"，
         把整个 _apply_theme 打断，界面停在半换肤状态。
         """
@@ -769,8 +769,8 @@ class App:
         self._update_batch_checkbox_label()
         self.auto_adjust_columns()
 
-        # ---- 归档库（放在最后建：它依赖前面建好的 controls 与主题）----
-        archive_page = self._add_page("归档库")
+        # ---- 底片册（放在最后建：它依赖前面建好的 controls 与主题）----
+        archive_page = self._add_page("底片册")
         self.archive_page.build(archive_page)
 
         # 默认显示第一个页面
@@ -1156,7 +1156,7 @@ class App:
 
         # Import the image-processing stack only once the user starts work.
         from processor.film_processor import FilmProcessor
-        # on_done 把产物与张数回写归档库；归档失败不影响出图（processor 内部已兜住）
+        # on_done 把产物与张数回写底片册；归档失败不影响出图（processor 内部已兜住）
         self.processor = FilmProcessor(config, on_done=self._on_render_done)
         threading.Thread(target=self.run_worker, daemon=True).start()
 
@@ -1201,11 +1201,11 @@ class App:
         msg = f"文件已保存至：\n{out}"
         roll = self.pending_roll
         if roll is not None:
-            msg += f"\n\n已归档到「归档库」：{roll.title}"
+            msg += f"\n\n已归档到「底片册」：{roll.title}"
         messagebox.showinfo("Success", msg)
 
     def _after_archive(self):
-        """渲染成功后刷新归档库并提示归档结果（在主线程调用）。"""
+        """渲染成功后刷新底片册并提示归档结果（在主线程调用）。"""
         roll = self.pending_roll
         self.pending_roll = None
         if roll is None:
@@ -1213,13 +1213,13 @@ class App:
         try:
             self.archive_page.refresh()
         except Exception as e:
-            print(f"刷新归档库失败: {e}", file=sys.stderr)
+            print(f"刷新底片册失败: {e}", file=sys.stderr)
         err = self.archive_service.last_error
         if err:
             self.set_status(f"已生成并归档，但有警告：{err}", "warning")
 
     # ------------------------------------------------------------------
-    # 从归档库回灌参数
+    # 从底片册回灌参数
     # ------------------------------------------------------------------
 
     def reload_from_archive(self, roll):
@@ -1416,7 +1416,7 @@ class App:
         if getattr(self, "nav", None) is not None:
             self.nav.set_index(self._current_page)
 
-        # 归档库页自绘卡片与详情面板需按新调色板重建
+        # 底片册页自绘卡片与详情面板需按新调色板重建
         try:
             self.archive_page.apply_theme(p, fonts)
         except Exception:

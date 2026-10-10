@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""归档库页面。
+"""底片册页面。
 
 作为顶部导航的第 5 页，提供：
 - 网格卡片浏览（缩略图 + 卷号 + 胶卷/相机 + 日期 + 张数）
@@ -10,8 +10,12 @@
 实现要点
 --------
 **缩略图懒加载**：Tk 没有 img 标签，必须用 ``PhotoImage``。网格可能有几百卷，
-一次性把缩略图全读进内存会直接吃爆。这里只为**当前可见区域**的卡片加载
-图片，滚出视野就销毁 PhotoImage 引用。
+一次性把缩略图全读进内存会直接吃爆。这里只为**当前可见区域**的卡片加载图片；
+已加载的卡片在重建前一直持有引用（不做按视野回收，见 ``load_visible_thumbs``）。
+
+**详情面板是固定宽度的滚动视口**：面板里的卡片内容比面板高，靠内部 Canvas +
+SlimScrollbar 滚动，而不是把整页顶高（顶高会在 App 级画布上再长出第二条滚动
+条）。宽度写死是为了让网格列数稳定，详见 ``DETAIL_W``。
 
 **自绘卡片**：项目已有 RoundedCard/PillButton 体系（见 ui/rounded.py），
 风格与主题跟随 THEMES，不引入第三方控件。
@@ -25,7 +29,7 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from ui.rounded import RoundedCard, PillButton
+from ui.rounded import RoundedCard, PillButton, SlimScrollbar
 from ui.icons import draw_icon
 
 # 网格卡片尺寸（含样片区 + 文字区）
@@ -72,6 +76,23 @@ def card_height(fonts: dict, warn: bool = False) -> int:
     lines = CARD_LINES_BASE + (1 if warn else 0)
     return CARD_IMG_H + card_text_height(fonts, lines)
 
+
+# 右侧详情面板宽度，以及内容区的净宽度。
+#
+# 宽度**必须固定**：原先面板宽度由卡片内容撑开（实测未选中 159 / 无产物 228 /
+# 有产物 292），网格区可用宽度随之变化，列数会在 5 和 6 之间跳 —— 选一张卡再
+# 刷新，整片卡片重排。固定后网格宽度恒定。
+#
+# 内边距取 15：RoundedCard 内部是 ``pad = max(pad, radius + 3)``，传 pad=14、
+# radius=12 时实际生效的是 15。这里必须跟着算，否则算出的净宽度偏大 2px，
+# 缩略图会顶穿卡片右边缘（卡片宽度被 canvas window 锁死，多出的直接裁掉）。
+DETAIL_W = 286
+DETAIL_PAD = 15
+DETAIL_INNER_W = DETAIL_W - DETAIL_PAD * 2
+
+# 详情缩略图的最大尺寸。高度别贪大：面板竖直方向很挤（见 _build_detail 的说明）。
+DETAIL_IMG_MAX = (DETAIL_INNER_W, 176)
+
 SORTS = [
     ("date_desc", "拍摄日期 ↓"),
     ("date_asc", "拍摄日期 ↑"),
@@ -113,7 +134,7 @@ def _reveal(path: str):
 
 
 class ArchivePage:
-    """归档库页。挂在 App 上，自身不继承 Tk 类。"""
+    """底片册页。挂在 App 上，自身不继承 Tk 类。"""
 
     def __init__(self, app):
         self.app = app
@@ -164,6 +185,8 @@ class ArchivePage:
         c = self.app.colors
         bar = tk.Frame(parent, bg=c["bg"])
         bar.pack(fill=tk.X, pady=(0, 10))
+        # 存引用：换肤时要刷底色（原来漏了它，切主题后工具栏底下一层还是旧色）
+        self._bar = bar
 
         # 分两行：筛选条件一行、操作按钮一行。
         # 原来全挤在一行，窗口一窄右侧按钮就被推出可视区（截图里「归档位置」
@@ -179,6 +202,9 @@ class ArchivePage:
         box = tk.Frame(filter_row, bg=c["field"], highlightthickness=1,
                        highlightbackground=c["border"])
         box.pack(side=tk.LEFT, fill=tk.Y, ipady=4, ipadx=8)
+        # 搜索框与输入框必须存引用：tk 控件不自动跟随主题，换肤名单里漏掉它们的
+        # 后果是「切到浅色后搜索框还是一块深色」，在整条工具栏里非常扎眼。
+        self._search_box = box
         self._search_icon = tk.Canvas(box, width=18, height=18, bg=c["field"],
                                       highlightthickness=0, bd=0)
         self._search_icon.pack(side=tk.LEFT, padx=(0, 6))
@@ -192,6 +218,7 @@ class ArchivePage:
         entry.pack(side=tk.LEFT)
         entry.bind("<Return>", lambda e: self.refresh())
         entry.bind("<KeyRelease>", self._on_search_key)
+        self._search_entry = entry
 
         # ---- 筛选下拉 ----
         self._filter_combos = {}
@@ -226,8 +253,8 @@ class ArchivePage:
                        command=self.on_import_folder,
                        variant="secondary", icon="import", height=30).pack(
             side=tk.RIGHT, padx=(8, 0))
-        # 归档位置属于低频但高影响操作（挪数据），视觉上做得轻一点
-        self.app._pill(action_row, text="归档位置",
+        # 底片册位置属于低频但高影响操作（挪数据），视觉上做得轻一点
+        self.app._pill(action_row, text="底片册位置",
                        command=self.on_change_location,
                        variant="ghost", icon="folder", height=30).pack(
             side=tk.LEFT)
@@ -236,6 +263,7 @@ class ArchivePage:
         c = self.app.colors
         body = tk.Frame(parent, bg=c["bg"])
         body.pack(fill=tk.BOTH, expand=True)
+        self._body = body
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=0)
         body.rowconfigure(0, weight=1)
@@ -243,6 +271,7 @@ class ArchivePage:
         # ---- 左侧网格 ----
         left = tk.Frame(body, bg=c["bg"])
         left.grid(row=0, column=0, sticky="nsew")
+        self._left = left
 
         self.canvas = tk.Canvas(left, highlightthickness=0, bd=0,
                                 bg=c["bg"])
@@ -269,21 +298,77 @@ class ArchivePage:
             font=self.app.fonts["body"], justify=tk.LEFT)
 
         # ---- 右侧详情 ----
-        self.detail = tk.Frame(body, bg=c["bg"], width=286)
+        # 宽度写死 + pack_propagate(False)。
+        #
+        # 关键在于：卡片是 **pack** 进 self.detail 的，决定「子控件是否撑大父容器」
+        # 的是 pack_propagate —— 原来那句 grid_propagate(False) 在这里是空操作
+        # （Tk 按子控件的布局管理器分工），面板宽度实际仍由卡片内容撑开，
+        # 于是宽度随选中内容跳动，网格列数跟着跳（详见 DETAIL_W 的说明）。
+        #
+        # 高度靠 sticky="ns" 吃满 body；内容比面板高是常态，超出部分交给
+        # 面板内部的滚动视口（_build_detail），而不是把整页顶高 ——
+        # 顶高会让 App 级画布也多出一条纵向滚动条，出现两层滚动。
+        self.detail = tk.Frame(body, bg=c["bg"], width=DETAIL_W)
         self.detail.grid(row=0, column=1, sticky="ns", padx=(12, 0))
-        self.detail.grid_propagate(False)
+        self.detail.pack_propagate(False)
         self._build_detail(self.detail)
         self._show_detail(None)
 
     def _build_detail(self, parent):
+        """详情面板 = 一个滚动视口 + 一张卡片。
+
+        卡片内容实测需求高度：
+            缩略图 171 + 标题 25 + 副标题 32 + 8 行字段 208 + 6 个按钮 230
+            + 卡片上下内边距 28 ≈ 736px
+        而面板高度只有约 647px（窗口 860 − 导航 − 筛选/操作行 − 底部操作栏）。
+        **必须能滚**：不能滚的时候底部按钮被 Tk 静默切掉 —— 实测第 4 个按钮只剩
+        3px 高、第 5/6 个直接 1×1，也就是「删除卷宗」这类按钮点不到。
+
+        滚动条用 App 同款 SlimScrollbar：place 覆盖在视口右上角，内容放得下时
+        完全隐形。**刻意不占布局空间** —— 若让滚动条参与布局，它出现/消失会改变
+        视口宽度，卡片里的缩略图与按钮就得重排，滚动条本身也跟着抖。
+        """
         c = self.app.colors
-        card = RoundedCard(parent, c, self.app.fonts, title="卷宗详情", radius=12, pad=14)
-        card.pack(fill=tk.X)
+        self.detail_canvas = tk.Canvas(parent, bg=c["bg"], highlightthickness=0,
+                                       bd=0, width=DETAIL_W, takefocus=0)
+        self.detail_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.detail_scroll = SlimScrollbar(self.detail_canvas, c,
+                                           command=self.detail_canvas.yview,
+                                           width=11)
+        self.detail_scroll.place(relx=1.0, rely=0.0, anchor="ne",
+                                 relheight=1.0, width=11)
+        self.detail_canvas.configure(yscrollcommand=self.detail_scroll.set)
+        # Canvas 的 lift/raise 被重载成 tag_raise，提升控件层级要走原生 Tk 命令
+        self.app.root.tk.call('raise', self.detail_scroll._w)
+        self.app._themed.append(self.detail_scroll)
+
+        card = RoundedCard(self.detail_canvas, c, self.app.fonts, title="卷宗详情",
+                           radius=12, pad=14)
         self.detail_card = card
+        self._detail_win = self.detail_canvas.create_window(
+            (0, 0), window=card, anchor="nw")
+        # 卡片变高 → 更新可滚动范围；视口变尺寸 → 把卡片钉成视口宽（见下方处理函数）
+        card.bind("<Configure>", self._on_detail_content_configure, add="+")
+        self.detail_canvas.bind("<Configure>", self._on_detail_view_configure, add="+")
+        # 面板内滚动自绘：只在鼠标悬于面板上时接管滚轮（与左侧网格同一套做法）
+        self.detail_canvas.bind("<Enter>",
+                                lambda e: self._bind_detail_wheel())
+        self.detail_canvas.bind("<Leave>",
+                                lambda e: self._unbind_detail_wheel())
+
         b = card.body
 
-        self.detail_img = tk.Label(b, bg=c["field"], text="", height=1)
+        # 这个 Label 刻意**不设 height**。
+        #
+        # Tk 的 Label：有图片时 height 的单位是**像素**，只有文字时才是行数。
+        # 原写成 height=1，于是真正的缩略图被裁成 1px 高的一条（实测 req=5）；
+        # 而「（未出图）」是纯文字、按 1 行算 22px 照常显示 —— 这就是
+        # 「有产物的卷反而看不到缩略图、没产物的卷倒有提示」的根因。
+        self.detail_img = tk.Label(b, bg=c["field"], text="")
         self.detail_img.pack(fill=tk.X, pady=(0, 10))
+        self._detail_img_shown = True
+        self._detail_photo = None
 
         self.detail_title = tk.Label(b, text="", bg=c["surface"], fg=c["fg"],
                                      font=self.app.fonts["card_title"],
@@ -474,7 +559,7 @@ class ArchivePage:
         self.grid_host.grid_columnconfigure(0, weight=1)
         self.grid_host.grid_rowconfigure(0, weight=1)
         if f["total"] == 0:
-            msg = ("归档库还是空的。\n\n"
+            msg = ("底片册还是空的。\n\n"
                    "每次「开始生成」成功后会自动建卷；\n"
                    "已拍但还没冲扫的底片可以用「补录卷宗」先登记。")
         else:
@@ -549,7 +634,10 @@ class ArchivePage:
     def load_visible_thumbs(self):
         """只为可见区域的卡片加载缩略图，由滚动与刷新触发。
 
-        PhotoImage 必须持有引用否则会被回收成空白 —— 所以存在 self._photo_refs。
+        PhotoImage 必须持有引用否则会被回收成空白 —— 引用存在**卡片自己**身上
+        （``RollCard._photo``），卡片被 destroy 时随之释放，所以离开视野的卡片
+        仍占着内存，直到下次 rebuild。卷宗很多时这是可感知的占用，但重建比
+        按视野回收简单得多，且重建只发生在筛选/排序/换肤时。
         """
         if not self._cards:
             return
@@ -589,6 +677,61 @@ class ArchivePage:
         self.canvas.yview_scroll(d, "units")
         self.load_visible_thumbs()
 
+    # ---- 详情面板的滚动 ----
+    #
+    # 与左侧网格同一套：靠 bind_all 接管滚轮，用 <Enter>/<Leave> 决定此刻
+    # 归谁 —— Tk 会把「指针移进子控件」产生的 Leave 判为 NotifyInferior 跳过，
+    # 所以光标压在卡片、字段或按钮上时，绑定仍然留在详情面板这边。
+    # 两侧共用同一组序列名，同一时刻只有一边绑着，不会互相抢。
+
+    def _bind_detail_wheel(self):
+        self.detail_canvas.bind_all("<MouseWheel>", self._on_detail_wheel)
+        self.detail_canvas.bind_all("<Button-4>", self._on_detail_wheel_linux)
+        self.detail_canvas.bind_all("<Button-5>", self._on_detail_wheel_linux)
+
+    def _unbind_detail_wheel(self):
+        self.detail_canvas.unbind_all("<MouseWheel>")
+        self.detail_canvas.unbind_all("<Button-4>")
+        self.detail_canvas.unbind_all("<Button-5>")
+
+    def _on_detail_wheel(self, e):
+        self.detail_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+
+    def _on_detail_wheel_linux(self, e):
+        self.detail_canvas.yview_scroll(-1 if e.num == 4 else 1, "units")
+
+    def _on_detail_content_configure(self, _e=None):
+        """卡片自身尺寸变了 → 更新可滚动范围。
+
+        必须显式设 scrollregion：Canvas 不会自动跟踪 create_window 里那个控件
+        的尺寸，不设的话滚动条认为内容高 = 视口高（`set(0,1)`），滚动条隐形、
+        滚轮也滚不动。
+        """
+        try:
+            self.detail_canvas.configure(
+                scrollregion=self.detail_canvas.bbox("all"))
+        except tk.TclError:
+            pass
+
+    def _on_detail_view_configure(self, e):
+        """视口尺寸变了 → 把卡片窗口钉成与视口同宽。
+
+        只钉宽、不钉高：卡片要保持自己的自然高度才能滚。宽度不钉的话会由卡片
+        的需求宽度决定（缩略图 + 两侧内边距），而外层面板是写死 286 的，
+        多出来的部分会被裁掉（表现为卡片右边被切一条）。
+        """
+        try:
+            self.detail_canvas.itemconfigure(self._detail_win, width=e.width)
+        except tk.TclError:
+            pass
+
+    def _detail_home(self):
+        """回到顶部。换选中项时调用 —— 否则上一卷滚到底后，换一卷还停在半截。"""
+        try:
+            self.detail_canvas.yview_moveto(0.0)
+        except tk.TclError:
+            pass
+
     # ------------------------------------------------------------------ #
     #  选中与详情
     # ------------------------------------------------------------------ #
@@ -601,12 +744,18 @@ class ArchivePage:
 
     def _show_detail(self, roll):
         c = self.app.colors
+        # 换了卷宗才回到顶部。不按「每次调用都回顶」做：换肤、编辑保存后都会
+        # 重走这里，每次回顶会让面板无缘无故往上跳。
+        rid = roll.id if roll is not None else None
+        if rid != getattr(self, "_detail_rid", None):
+            self._detail_home()
+            self._detail_rid = rid
         if roll is None:
             for key, _ in FIELD_LABELS:
                 self._field_labels[key].configure(text="")
             self.detail_title.configure(text="未选中卷宗")
             self.detail_sub.configure(text="点击左侧卡片查看详情")
-            self._clear_image(self.detail_img)
+            self._show_detail_image()
             self._rebuild_actions(None)
             return
 
@@ -625,36 +774,48 @@ class ArchivePage:
         self._rebuild_actions(roll)
 
     def _load_detail_image(self, roll):
-        c = self.app.colors
         path = self.service.ensure_thumb(roll)
         if not path:
-            self._clear_image(self.detail_img)
+            # 明确区分「没出图」和「图丢了」，这两种都要让用户知道
             if not roll.has_output():
-                # 明确区分「没出图」和「图丢了」，这两种都要让用户知道
-                self.detail_img.configure(
-                    text="（产物文件不在了）" if roll.outputs else "（未出图）",
-                    image="", fg=c["fg_muted"])
+                self._show_detail_image(
+                    note="（产物文件不在了）" if roll.outputs else "（未出图）")
             else:
-                self.detail_img.configure(text="", image="", fg=c["fg_muted"])
+                self._show_detail_image()
             return
         try:
             from PIL import Image, ImageTk
             im = Image.open(path)
-            im.thumbnail((258, 190), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(im)
-            self.detail_img.configure(image=photo, text="")
-            self._detail_photo = photo      # 保持引用
+            im.thumbnail(DETAIL_IMG_MAX, Image.LANCZOS)
+            self._show_detail_image(photo=ImageTk.PhotoImage(im))
         except Exception as e:
-            self.detail_img.configure(text=f"缩略图读取失败\n{e}", image="",
-                                      fg=c["error"])
+            self._show_detail_image(note=f"缩略图读取失败\n{e}",
+                                    color=self.app.colors["error"])
 
-    @staticmethod
-    def _clear_image(label):
-        label.configure(image="", text="")
-        try:
-            label._photo = None
-        except Exception:
-            pass
+    def _show_detail_image(self, photo=None, note="", color=None):
+        """详情缩略图：有图 / 只有一行说明 / 什么都没有，三种状态显式区分。
+
+        「什么都没有」必须 pack_forget。只清 image/text 的话 Label 会退化成一条
+        field 底色的窄带 —— 自然高度虽只有几个像素，但那条异色横条很显眼，
+        看着像界面画歪了。
+
+        重新 pack 时**必须**写 ``before=self.detail_title``：pack_forget 之后再
+        pack 会排到队尾，缩略图就跑到底下去了。
+        """
+        c = self.app.colors
+        if photo is None and not note:
+            self.detail_img.pack_forget()
+            self._detail_img_shown = False
+            self.detail_img.configure(image="", text="")
+            self._detail_photo = None
+            return
+        if not getattr(self, "_detail_img_shown", False):
+            self.detail_img.pack(fill=tk.X, pady=(0, 10),
+                                 before=self.detail_title)
+            self._detail_img_shown = True
+        self.detail_img.configure(image=photo or "", text=note,
+                                  fg=color or c["fg_muted"])
+        self._detail_photo = photo        # 保持引用，否则 PhotoImage 被回收就是白板
 
     def _rebuild_actions(self, roll):
         """按可用产物重建按钮组。没有产物时按钮要真的消失，
@@ -728,7 +889,7 @@ class ArchivePage:
         return
 
     def on_change_location(self):
-        """更改归档库位置。
+        """更改底片册位置。
 
         这是最容易把数据"弄丢"的操作：配置一改，旧路径下的文件还在，但应用
         会像凭空消失一样看不见它们。所以流程必须是**先复制、再切配置、最后
@@ -740,7 +901,7 @@ class ArchivePage:
         cur = S.archive_dir()
         is_default = not load_config().get("archive_dir")
         dlg = tk.Toplevel(self.app.root)
-        dlg.title("归档库位置")
+        dlg.title("底片册位置")
         dlg.transient(self.app.root)
         dlg.resizable(False, False)
 
@@ -748,7 +909,7 @@ class ArchivePage:
         body = tk.Frame(dlg, bg=c["bg"], padx=18, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
 
-        card = RoundedCard(body, c, self.app.fonts, title="归档库位置", radius=12, pad=14)
+        card = RoundedCard(body, c, self.app.fonts, title="底片册位置", radius=12, pad=14)
         card.pack(fill=tk.X)
         inner = card.body
         inner.columnconfigure(0, weight=1)
@@ -772,7 +933,7 @@ class ArchivePage:
         entry.grid(row=3, column=0, sticky=tk.EW, pady=(2, 8))
 
         def browse():
-            d = filedialog.askdirectory(title="选择归档库位置")
+            d = filedialog.askdirectory(title="选择底片册位置")
             if d:
                 new_var.set(d)
 
@@ -789,7 +950,7 @@ class ArchivePage:
 
         hint = tk.Label(
             body,
-            text=("归档数据会复制到新位置，旧文件保留不动。\n"
+            text=("底片册数据会复制到新位置，旧文件保留不动。\n"
                   "确认新位置的数据无误后，可手动删除旧目录。\n"
                   "留空则恢复默认位置（与配置文件同目录）。"),
             bg=c["bg"], fg=c["fg_muted"], font=self.app.fonts["caption"],
@@ -840,8 +1001,8 @@ class ArchivePage:
         target_file = os.path.join(new_dir, S.ARCHIVE_FILENAME)
         if os.path.exists(target_file):
             if not messagebox.askyesno(
-                    "目标已有归档数据",
-                    f"目标位置已存在归档文件：\n{target_file}\n\n"
+                    "目标已有底片册数据",
+                    f"目标位置已存在底片册文件：\n{target_file}\n\n"
                     f"继续会覆盖它。建议先备份。\n确定继续吗？",
                     parent=self._loc_dialog):
                 return
@@ -853,7 +1014,7 @@ class ArchivePage:
                 shutil.copy2(old_file, target_file)
             except OSError as e:
                 messagebox.showerror("迁移失败",
-                                     f"复制归档数据失败，已保持原位置不变：\n{e}",
+                                     f"复制底片册数据失败，已保持原位置不变：\n{e}",
                                      parent=self._loc_dialog)
                 return
 
@@ -878,10 +1039,10 @@ class ArchivePage:
         self.service.store.load(force=True)
         self._loc_dialog.destroy()
         self.refresh()
-        self.app.set_status(f"归档库已迁移至：{new_dir}", "success")
+        self.app.set_status(f"底片册已迁移至：{new_dir}", "success")
         messagebox.showinfo(
             "迁移完成",
-            f"归档数据已复制到：\n{new_dir}\n\n"
+            f"底片册数据已复制到：\n{new_dir}\n\n"
             f"旧文件仍保留在：\n{old_file}\n\n"
             f"确认新数据无误后，可手动删除旧文件。",
             parent=self.app.root)
@@ -892,8 +1053,8 @@ class ArchivePage:
     def on_delete(self, roll):
         if not messagebox.askyesno(
                 "删除卷宗",
-                f"确定从归档库移除「{roll.title}」吗？\n\n"
-                f"这只删除归档记录，磁盘上的图片不会被删。\n"
+                f"确定从底片册移除「{roll.title}」吗？\n\n"
+                f"这只删除底片册记录，磁盘上的图片不会被删。\n"
                 f"（如需连图一起删，请在确定后另行手动删除文件）"):
             return
         if self.service.delete(roll.id):
@@ -954,18 +1115,78 @@ class ArchivePage:
         # self.frame 是 ttk.Frame，不能 configure(bg=) —— ttk 走 style。
         # 它的背景由 App._apply_theme 里的 TFrame style 统一管，这里只管
         # 自己创建的 tk 控件。
-        for w in (self.canvas, self.grid_host, self.detail,
+        #
+        # 这里**必须列全**：tk 控件不会自己跟随主题，漏一个就是一块永远停在旧
+        # 配色的补丁。曾经漏掉 body / bar / 搜索框 / 输入框，于是运行中切主题
+        # 之后：工具栏底下衬着一层旧色、搜索框还是一块深色。
+        # 详情面板内部的控件更特殊（一次建好、之后只改文字，不像网格卡片那样
+        # 换肤时整片重建），交给 _apply_detail_theme 逐个刷。
+        for w in (self.canvas, self.grid_host, self._body, self._bar, self._left,
+                  self.detail, self.detail_canvas,
                   self.empty_lbl, self.count_lbl,
-                  self._filter_row, self._action_row,
-                  self._search_icon):
+                  self._filter_row, self._action_row):
             try:
                 w.configure(bg=colors["bg"])
             except tk.TclError:
                 pass
+        # 搜索框这一组底色是 field（不是页面底色），要单独刷
+        for w in (self._search_box, self._search_icon, self._search_entry):
+            try:
+                w.configure(bg=colors["field"])
+            except tk.TclError:
+                pass
+        try:
+            self._search_entry.configure(fg=colors["fg"],
+                                         insertbackground=colors["fg"])
+            self._search_box.configure(highlightbackground=colors["border"])
+        except tk.TclError:
+            pass
+        self._apply_detail_theme(colors)
         self._clear_grid()
         self.refresh()
         self._show_detail(self.service.get(self._selected_id)
                           if self._selected_id else None)
+
+    def _apply_detail_theme(self, colors):
+        """详情面板整块换肤。
+
+        详情面板是**一次性建好、之后只改文字**的（不像网格卡片换肤时整片重建），
+        所以底色得逐个刷。以前只刷了外层 canvas —— 卡片主体、卡片标题、卷宗标题、
+        副标题、8 行字段名与字段值全留在旧主题的 surface 上，切到浅色后详情面板
+        里是一整块深色（实测 41 个控件里绝大部分出自这里）。
+        """
+        # RoundedCard 是自绘控件，且不经过 App._pill/_card_pill 的自动登记，
+        # 换肤要显式调它的 apply_theme（它会重刷 inner/head/body/canvas/标题）
+        try:
+            self.detail_card.apply_theme(colors, self.app.fonts)
+        except tk.TclError:
+            pass
+        surf, field = colors["surface"], colors["field"]
+        self.detail_img.configure(bg=field)
+        self.detail_title.configure(bg=surf, fg=colors["fg"])
+        self.detail_sub.configure(bg=surf, fg=colors["fg_muted"])
+        self.detail_fields.configure(bg=surf)
+        self.detail_actions.configure(bg=surf)
+        for row in self.detail_fields.winfo_children():
+            try:
+                row.configure(bg=surf)
+            except tk.TclError:
+                continue
+            # 每行是「字段名（muted）+ 字段值（fg）」两个 Label，顺序固定
+            for i, k in enumerate(row.winfo_children()):
+                try:
+                    k.configure(bg=surf,
+                                fg=colors["fg_muted"] if i == 0 else colors["fg"])
+                except tk.TclError:
+                    pass
+        # 操作按钮是 _rebuild_actions 现建的，颜色本来就是新的；
+        # 但「产物文件已不在原位置」那条提示是 tk.Label，得跟着刷
+        for k in self.detail_actions.winfo_children():
+            if isinstance(k, tk.Label):
+                try:
+                    k.configure(bg=surf, fg=colors["warning"])
+                except tk.TclError:
+                    pass
 
 
 # --------------------------------------------------------------------------- #
@@ -1033,7 +1254,7 @@ class _Tip:
 
 
 class RollCard(tk.Frame):
-    """归档库网格里的一张卷宗卡片。"""
+    """底片册网格里的一张卷宗卡片。"""
 
     def __init__(self, page: ArchivePage, roll, width: int, height: int = None):
         # 行数跟着实际内容走：相机为空少一行，产物丢失多一行。
@@ -1150,8 +1371,13 @@ class RollCard(tk.Frame):
         lbl.configure(text=text)
         return lbl
 
-    def _draw_placeholder(self):
-        """缩略图未加载/无产物时的占位图形。"""
+    def _draw_placeholder(self, note: str = ""):
+        """缩略图未加载/无产物时的占位图形。
+
+        ``note`` 用来区分「产物在、图解不出来」这种情况。早先它和「压根没有
+        产物」共用同一条路径、都只画齿孔，用户对着一张空卡片分不清是坏了
+        还是本来就没出图。
+        """
         c = self.page.app.colors
         self.img_area.delete("all")
         w = int(self.img_area.cget("width")) or (CARD_W - 2)
@@ -1163,9 +1389,10 @@ class RollCard(tk.Frame):
                 self.img_area.create_rectangle(x, y - 3, x + 7, y + 3,
                                                 fill=c["border"], outline="")
                 x += 13
-        if not self.roll.has_output():
+        label = note or ("未出图" if not self.roll.has_output() else "")
+        if label:
             self.img_area.create_text(
-                w / 2, h / 2, text="未出图", fill=c["fg_muted"],
+                w / 2, h / 2, text=label, fill=c["fg_muted"],
                 font=self.page.app.fonts["caption"])
 
     def has_image(self) -> bool:
@@ -1175,7 +1402,8 @@ class RollCard(tk.Frame):
         """加载缩略图并显示。失败保留占位，不抛异常。"""
         path = self.page.service.ensure_thumb(self.roll)
         if not path:
-            self._draw_placeholder()
+            # 有产物却出不来图，直说；别让用户对着空卡片猜
+            self._draw_placeholder("缩略图不可用" if self.roll.has_output() else "")
             return
         try:
             from PIL import Image, ImageTk
@@ -1187,7 +1415,7 @@ class RollCard(tk.Frame):
                 (CARD_W - 2) / 2, CARD_IMG_H / 2, image=photo)
             self._photo = photo      # 必须持有，否则立刻被回收成空白
         except Exception:
-            self._draw_placeholder()
+            self._draw_placeholder("缩略图不可用" if self.roll.has_output() else "")
 
     def set_selected(self, on: bool):
         self._selected = on

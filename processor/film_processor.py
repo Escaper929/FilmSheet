@@ -32,7 +32,7 @@ class FilmProcessor:
     def __init__(self, config, on_done=None):
         self.config = config
         # 可选回调 (config, outputs) -> None，渲染成功后触发。
-        # 归档库靠它记录「这卷拍了多少张、产物在哪」；不传就完全不触发，
+        # 底片册靠它记录「这卷拍了多少张、产物在哪」；不传就完全不触发，
         # 现有调用方（api/main.py、测试、脚本）行为不变。
         self.on_done = on_done
         self._max_workers = min(4, os.cpu_count() or 1)
@@ -177,7 +177,7 @@ class FilmProcessor:
     # ------------------------------------------------------------------
 
     def _notify_done(self, config: dict, frame_count: int, output_specs: list):
-        """渲染成功后通知外部（归档库）。
+        """渲染成功后通知外部（底片册）。
 
         这里刻意包了try/except：归档是附加功能，写盘失败、目录无权限、
         数据格式问题都不该让用户已经拿到的图「变成失败」。失败只记日志。

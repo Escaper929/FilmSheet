@@ -169,7 +169,7 @@ class Roll:
         """由稳定字段派生 id。
 
         刻意**不**用 uuid：同一卷反复生成时要落回同一条记录，用 uuid 每次都是
-        新条目，归档库立刻被重复项淹没。
+        新条目，底片册立刻被重复项淹没。
         """
         key = "|".join([_s(roll_no).lower(), _s(shoot_date), _s(film).lower()])
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
@@ -281,11 +281,21 @@ class Roll:
 
     @property
     def primary_output(self) -> Output | None:
-        """代表产物：优先灯板，其次第一条。"""
-        for o in self.outputs:
+        """代表产物：优先灯板，其次第一条 —— 但**只在文件还在的里面挑**。
+
+        代表产物的文件被移走后，只要这卷还有别的产物在，缩略图就必须出得来。
+        早先不看存在性，于是「文件不在了 + 后来补了新产物」的卷会永远显示不出
+        缩略图 —— 而且 `has_output()` 为真，卡片连「文件不在了」都不提示，
+        用户只能看到一张怎么点都没图的空卡片。
+
+        全都失联时**仍然返回第一条**（而不是 None），让调用方能照旧用
+        `out.exists()` 区分「没产物」和「产物丢了」。
+        """
+        pool = self.existing_outputs() or self.outputs
+        for o in pool:
             if o.style == STYLE_LIGHTBOX:
                 return o
-        return self.outputs[0] if self.outputs else None
+        return pool[0] if pool else None
 
     def output_by_style(self, style: str) -> Output | None:
         for o in self.outputs:
@@ -416,5 +426,11 @@ class Roll:
         extras = {k: v for k, v in d.items()
                   if k not in known and not k.startswith("_")}
         if extras:
-            roll.render_config.setdefault("_legacy_extras", extras).update(extras)
+            bag = roll.render_config.setdefault("_legacy_extras", {})
+            if isinstance(bag, dict):
+                bag.update(extras)
+            else:
+                # 手改文件把这一格写成了字符串之类。不能为此让整条记录读不出来
+                # —— 这是纯附带的存档格，丢了也不影响任何展示字段。
+                roll.render_config["_legacy_extras"] = dict(extras)
         return roll

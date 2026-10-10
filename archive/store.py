@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""归档库持久化 —— 单个 JSON 文件。
+"""底片册持久化 —— 单个 JSON 文件。
 
 为什么不是 SQLite：几十到几千卷的量级，JSON 的读取是毫秒级；换来的是
 数据可读、可diff、手改方便、备份就是拷一个文件。对这个工具来说更值。
@@ -26,7 +26,7 @@ SCHEMA_VERSION = 1
 
 ARCHIVE_FILENAME = "filmsheet_archive.json"
 
-# 允许用环境变量把归档库指向别处（NAS / 同步盘 / 测试目录）。
+# 允许用环境变量把底片册指向别处（NAS / 同步盘 / 测试目录）。
 # 优先级：环境变量 > filmsheet_config.json 里的archive_dir > 默认配置目录。
 # 环境变量最优先是因为它连配置文件都读不到时也能生效（配置损坏时的逃生通道）。
 ENV_ARCHIVE_DIR = "FILMSHEET_ARCHIVE_DIR"
@@ -46,19 +46,19 @@ def default_config_dir() -> str:
 
 
 def _configured_dir() -> str:
-    """从配置文件里读用户设定的归档目录（读不到就返回空串）。"""
+    """从配置文件里读用户设定的底片册目录（读不到就返回空串）。"""
     try:
         # 延迟导入：store 是领域层，不该硬依赖 utils.helpers
         from utils.helpers import load_config
         v = (load_config() or {}).get("archive_dir", "")
         return v.strip() if isinstance(v, str) else ""
     except Exception:
-        # 配置文件损坏/不存在时不能连带归档库一起打不开
+        # 配置文件损坏/不存在时不能连带底片册一起打不开
         return ""
 
 
 def archive_dir() -> str:
-    """归档库所在目录。
+    """底片册所在目录。
 
     默认与配置文件同处（用户找得到）；用户可在配置里改到NAS / 同步盘，
     也可用 ``FILMSHEET_ARCHIVE_DIR`` 环境变量临时覆盖（优先级最高）。
@@ -82,17 +82,31 @@ def _date_key(s: str) -> tuple:
     用户手填日期不会那么规整：``2026/3``、``202603``、``2026.3.1``、``2026年``都见过。
     抽取连续数字补齐成 (年, 月, 日)，抽不出就退化成 (0,0,0)，让排序稳定
     而不是按字符串字典序乱排。
+
+    **单个数字里塞了年月日的紧写必须拆开**（``20260304`` → (2026,3,4)、
+    ``202603`` → (2026,3,0)）。早先一律 ``int(n[:4])``，把它们统统压成
+    ``(2026, 0, 0)`` —— 与裸 ``2026`` 撞成同一个排序键，年份之间分不出先后。
+    而紧凑写法正是本工具自己的产物命名格式，不是边角情况。
     """
     import re
     nums = re.findall(r"\d+", s or "")
     if not nums:
         return (0, 0, 0)
     parts: list[int] = []
-    for n in nums[:3]:
-        parts.append(int(n[:4]) if len(n) > 4 else int(n))
+    for n in nums:
+        if len(parts) >= 3:
+            break
+        if len(n) == 8:                      # 20260304 —— 年月日挤在一个数字里
+            parts += [int(n[:4]), int(n[4:6]), int(n[6:8])]
+        elif len(n) == 6:                    # 202603 —— 年月挤在一起
+            parts += [int(n[:4]), int(n[4:6])]
+        elif len(n) > 4:                     # 更长的怪东西：只敢信前四位是年
+            parts.append(int(n[:4]))
+        else:
+            parts.append(int(n))
     while len(parts) < 3:
         parts.append(0)
-    return tuple(parts)
+    return tuple(parts[:3])
 
 
 def _migrate_0_to_1(data: dict) -> dict:
@@ -100,7 +114,7 @@ def _migrate_0_to_1(data: dict) -> dict:
         # 极早期把卷宗直接存成数组
         data = {"rolls": data}
     if not isinstance(data, dict):
-        raise ValueError("归档文件根节点不是对象或数组")
+        raise ValueError("底片册文件根节点不是对象或数组")
     data.setdefault("rolls", [])
     if not isinstance(data["rolls"], list):
         data["rolls"] = []
@@ -119,7 +133,7 @@ def migrate(data):
     if isinstance(data, list):
         data = {"rolls": data}
     if not isinstance(data, dict):
-        raise ValueError("归档文件根节点既不是对象也不是数组")
+        raise ValueError("底片册文件根节点既不是对象也不是数组")
 
     ver = int(data.get("schema_version") or 0)
     for fn in _MIGRATIONS:
@@ -185,15 +199,58 @@ class ArchiveStore:
 
         try:
             data = migrate(raw)
-            self._rolls = [Roll.from_dict(d) for d in data.get("rolls", [])]
-        except Exception as e:                      # 结构对但内容坏
+        except Exception as e:                      # 连根节点都不对：整库没法用
             self._backup_corrupt(f"结构异常: {e}")
             self._rolls = []
-        finally:
             self._stamp = self._current_stamp()
+            self._dedupe()
+            return self._rolls
+
+        # 逐条容错：一条坏记录只丢它自己。
+        #
+        # 早先这里是列表推导式，任何一条 `Roll.from_dict` 抛异常都会落到
+        # `except` → 整库改名备份、当空库启动。用户看到的是「底片册还是空的」，
+        # 得自己去目录里翻 `.corrupt-*` 手工修 —— 手改 JSON 写错一个字段类型
+        # 就够触发。产物层（`_safe_outputs`）和字段层（`Roll.from_dict`）早就
+        # 逐条容错了，只有这一层是全有全无。
+        rolls: list[Roll] = []
+        bad = 0
+        for d in data.get("rolls", []) or []:
+            try:
+                rolls.append(Roll.from_dict(d))
+            except Exception:
+                bad += 1
+        self._rolls = rolls
+
+        # 被跳过的记录在下次 save 时会从文件里消失，所以先把原文件留个副本。
+        # 不搬走（不像 _backup_corrupt）—— 好数据还要接着用。
+        if bad:
+            kept = self._preserve_damaged()
+            self.load_warning = (
+                f"底片册有 {bad} 条记录读不出来，已跳过；"
+                f"其余 {len(rolls)} 卷正常。"
+                + (f"原文件已另存为 {kept}" if kept else "（原文件副本创建失败）")
+            )
+
+        self._stamp = self._current_stamp()
 
         self._dedupe()
         return self._rolls
+
+    def _preserve_damaged(self) -> str:
+        """把读不干净的原始文件**复制**一份留档，返回副本文件名（失败返回空串）。
+
+        与 ``_backup_corrupt`` 的区别：那个是整库不可读，必须把文件搬走，
+        否则下次启动又踩同一颗雷；这里只是坏了几条，好数据还要继续用，
+        所以留副本而不是搬走 —— 但坏掉的那几条因此不会在下次保存时无声消失。
+        """
+        try:
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            bak = f"{self.path}.damaged-{stamp}"
+            shutil.copy2(self.path, bak)
+            return os.path.basename(bak)
+        except OSError:
+            return ""
 
     def _current_stamp(self) -> tuple | None:
         try:
@@ -339,7 +396,7 @@ class ArchiveStore:
         """筛选 + 排序。
 
         关键词在卷号/胶卷/相机/备注/冲洗信息里做不区分大小写的子串匹配——
-        归档库的使用方式是「记不清全名，只记得是台 M6」，模糊比精确好用。
+        底片册的使用方式是「记不清全名，只记得是台 M6」，模糊比精确好用。
         """
         rolls = self.load()
         kw = keyword.strip().lower()
