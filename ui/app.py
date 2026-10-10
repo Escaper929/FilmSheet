@@ -14,6 +14,14 @@ from ui.rounded import (RoundedCard, PillButton, SegmentedControl,
 from ui.icons import draw_icon
 from archive.service import ArchiveService
 from ui.archive_page import ArchivePage
+from processor.config_schema import (
+    FIELD_DEFS,
+    SUB_FORMATS_135,
+    SUB_FORMATS_BY_FORMAT,
+    THUMB_WIDTH_MAX,
+    THUMB_WIDTH_MIN,
+    default_sub_format,
+)
 
 # 页面标题 + 分段导航图标（顺序即导航顺序）
 PAGES = [
@@ -113,15 +121,25 @@ class App:
         self.archive_service.enabled = cfg.get("archive_auto", True)
         self.archive_page = ArchivePage(self)
 
-        # 确保子画幅有默认值
-        sub_format = cfg.get("sub_format", "标准 36×24")
-        if sub_format not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24", "645", "66", "67", "68", "69", "612", "617", "624"]:
-            sub_format = "标准 36×24"
+        # 确保子画幅与画幅匹配。必须按 film_format 校验，不能用「135+120 并集」
+        # 放行——否则 film_format=120 配 sub_format='标准 36×24' 会静默通过，
+        # 最终按默认比例出图。这与 API 侧 _validate_sub_format 是同一条规则。
+        film_format = cfg.get("film_format") or FIELD_DEFS["film_format"]["default"]
+        sub_format = cfg.get("sub_format") or default_sub_format(film_format)
+        if sub_format not in SUB_FORMATS_BY_FORMAT.get(film_format, SUB_FORMATS_135):
+            sub_format = default_sub_format(film_format)
+
+        # 同理夹回缩略图宽度：Spinbox 只能产出合法值，但配置文件可能是旧版
+        # 写进去的（上限曾一度是 1600）。不夹的话点「开始生成」只会撞上
+        # validate_config 的「配置错误」，用户看不出是自己存了个越界值。
+        thumb_width = cfg.get("thumb_width") or FIELD_DEFS["thumb_width"]["default"]
+        if not (THUMB_WIDTH_MIN <= thumb_width <= THUMB_WIDTH_MAX):
+            thumb_width = max(THUMB_WIDTH_MIN, min(THUMB_WIDTH_MAX, thumb_width))
 
         self.vars = {
             'input_folder': tk.StringVar(),
             'output_file': tk.StringVar(value="filmsheet_output.jpg"),
-            'thumb_width': tk.IntVar(value=400),
+            'thumb_width': tk.IntVar(value=thumb_width),
             'spacing': tk.IntVar(value=20),
             'columns': tk.IntVar(value=6),
             'force_landscape': tk.BooleanVar(value=True),
@@ -594,7 +612,7 @@ class App:
         b = c.body
         b.columnconfigure(1, weight=1)
         ttk.Label(b, text="缩略图宽", font=self.fonts["body"]).grid(row=0, column=0, sticky=tk.W, pady=4)
-        ttk.Spinbox(b, from_=300, to=1600, textvariable=self.vars['thumb_width'], width=8,
+        ttk.Spinbox(b, from_=THUMB_WIDTH_MIN, to=THUMB_WIDTH_MAX, textvariable=self.vars['thumb_width'], width=8,
                     font=self.fonts["body"]).grid(row=0, column=1, sticky=tk.W, padx=8)
         ttk.Label(b, text="每行列数", font=self.fonts["body"]).grid(row=1, column=0, sticky=tk.W, pady=4)
         ttk.Spinbox(b, from_=1, to=99, textvariable=self.vars['columns'], width=8,
@@ -788,16 +806,11 @@ class App:
     def toggle_sub_format(self):
         """切换画幅时更新子画幅选项和比例显示"""
         film_format = self.vars['film_format'].get()
-        if film_format == "135":
-            self.sub_combo['values'] = ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]
-            current = self.vars['sub_format'].get()
-            if current not in ["标准 36×24", "半格 18×24", "方形 24×24", "XPan 65×24"]:
-                self.vars['sub_format'].set("标准 36×24")
-        else:
-            self.sub_combo['values'] = ["645", "66", "67", "68", "69", "612", "617", "624"]
-            current = self.vars['sub_format'].get()
-            if current not in ["645", "66", "67", "68", "69", "612", "617", "624"]:
-                self.vars['sub_format'].set("66")
+        options = SUB_FORMATS_BY_FORMAT.get(film_format, SUB_FORMATS_135)
+        self.sub_combo['values'] = options
+        current = self.vars['sub_format'].get()
+        if current not in options:
+            self.vars['sub_format'].set(default_sub_format(film_format))
         self.update_ratio_label()
         self.auto_adjust_columns()  # 新增：切换画幅时自动更新列数
 

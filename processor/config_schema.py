@@ -29,6 +29,22 @@ OUTPUT_FORMATS = ["PNG", "JPG"]
 # All valid perf modes
 PERF_MODES = ["Auto", "KS (民用)", "BH (电影)"]
 
+# Thumbnail width bounds -- the single source of truth for every frontend.
+#
+# The ceiling is a *resource* limit, not an arbitrary number. Rendering happens
+# on a 4x supersampled RGBA canvas, so memory scales with the square of the
+# width: measured peak RSS for a 6-frame 135 sheet at columns=6 was
+# 400px -> 241MB, 800px -> 887MB, 1200px -> 2.9GB, 1600px -> 5.4GB.
+# 1200 is the highest value that stays under ~3GB for a typical roll while
+# still producing a print-resolution sheet.
+#
+# Previously three places disagreed (desktop Spinbox 300-1600, API 300-1200,
+# FIELD_DEFS with no range at all), so a config file could hold a value the UI
+# could not even represent, and validate_config accepted anything including
+# negative widths. Both frontends now import these bounds.
+THUMB_WIDTH_MIN = 300
+THUMB_WIDTH_MAX = 1200
+
 # All valid pack positions
 PACK_POSITIONS = ["left", "right"]
 
@@ -61,7 +77,7 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     'output_file':     {"type": "string", "default": "filmsheet_output.jpg"},
 
     # Parameters
-    'thumb_width':     {"type": "int",    "default": 400},
+    'thumb_width':     {"type": "int",    "default": 400, "range": (THUMB_WIDTH_MIN, THUMB_WIDTH_MAX)},
     'spacing':         {"type": "int",    "default": 20},
     'columns':         {"type": "int",    "default": 6,    "range": (1, 99)},
     'force_landscape': {"type": "bool",   "default": True},

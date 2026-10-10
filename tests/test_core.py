@@ -8,6 +8,7 @@ GUI, network, or actual image files.
 import io
 import math
 import os
+import pathlib
 import sys
 import tempfile
 import unittest
@@ -37,6 +38,8 @@ from processor.config_schema import (
     DEFAULT_SUB_FORMAT_BY_FORMAT,
     RENDER_STYLES,
     FILM_FORMATS,
+    THUMB_WIDTH_MIN,
+    THUMB_WIDTH_MAX,
 )
 from utils.helpers import STYLE_COLORS, FILM_FORMAT_RATIOS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS
 
@@ -306,11 +309,13 @@ class TestConfigSchema(unittest.TestCase):
         self.assertTrue(valid)
         self.assertEqual(errors, [])
 
-    def test_validate_invalid_thumb_width(self):
-        # thumb_width range has been removed; no validation error expected
+    def test_validate_out_of_range_thumb_width(self):
+        # thumb_width is bounded again (see TestThumbWidthRange): the ceiling is
+        # a memory limit, since the 4x supersampled canvas grows with its square.
         config = {"thumb_width": 100}
         valid, errors = validate_config(config)
-        self.assertTrue(valid)
+        self.assertFalse(valid)
+        self.assertTrue(any("thumb_width" in e for e in errors), errors)
 
     def test_validate_invalid_render_style(self):
         config = {"render_style": "invalid_style"}
@@ -407,6 +412,86 @@ class TestSubFormatValidation(unittest.TestCase):
         for film_format, sub_format in DEFAULT_SUB_FORMAT_BY_FORMAT.items():
             with self.subTest(film_format=film_format):
                 self.assertIn(sub_format, SUB_FORMATS_BY_FORMAT[film_format])
+
+
+class TestThumbWidthRange(unittest.TestCase):
+    """thumb_width bounds must be declared once and enforced by validate_config.
+
+    The three frontends used to disagree (desktop 300-1600, API 300-1200,
+    FIELD_DEFS unbounded), which let a config file hold a value the UI could not
+    represent and let negative widths through validation.
+    """
+
+    def test_field_defs_uses_the_shared_bounds(self):
+        self.assertEqual(
+            FIELD_DEFS["thumb_width"]["range"], (THUMB_WIDTH_MIN, THUMB_WIDTH_MAX)
+        )
+
+    def test_field_defs_default_is_inside_the_range(self):
+        default = FIELD_DEFS["thumb_width"]["default"]
+        self.assertGreaterEqual(default, THUMB_WIDTH_MIN)
+        self.assertLessEqual(default, THUMB_WIDTH_MAX)
+
+    def test_bounds_are_sane(self):
+        self.assertEqual(THUMB_WIDTH_MIN, 300)
+        self.assertEqual(THUMB_WIDTH_MAX, 1200)
+
+    def test_values_inside_the_range_are_accepted(self):
+        for value in (THUMB_WIDTH_MIN, 400, 800, THUMB_WIDTH_MAX):
+            with self.subTest(value=value):
+                valid, errors = validate_config({"thumb_width": value})
+                self.assertTrue(valid, errors)
+
+    def test_values_outside_the_range_are_rejected(self):
+        """Without this, a bad config silently renders at a wasteful size."""
+        for value in (THUMB_WIDTH_MIN - 1, 0, -500, 99999, THUMB_WIDTH_MAX + 1):
+            with self.subTest(value=value):
+                valid, errors = validate_config({"thumb_width": value})
+                self.assertFalse(valid, f"{value} should be rejected")
+                self.assertTrue(any("thumb_width" in e for e in errors), errors)
+
+    def test_bounds_are_ordered(self):
+        self.assertLess(THUMB_WIDTH_MIN, THUMB_WIDTH_MAX)
+
+    def test_api_form_bounds_match_the_shared_constants(self):
+        """The API declares its own ge/le; they must not drift from the schema.
+
+        Read as source text on purpose -- importing api.main pulls in FastAPI and
+        the whole render stack, which this headless test module avoids.
+        """
+        api = pathlib.Path(__file__).resolve().parent.parent / "api" / "main.py"
+        text = api.read_text(encoding="utf-8")
+        self.assertIn("ge=THUMB_WIDTH_MIN", text)
+        self.assertIn("le=THUMB_WIDTH_MAX", text)
+
+    def test_desktop_spinbox_uses_the_shared_constants(self):
+        """Same reasoning: assert on source text, not on Tk widget state."""
+        ui = pathlib.Path(__file__).resolve().parent.parent / "ui" / "app.py"
+        text = ui.read_text(encoding="utf-8")
+        self.assertIn("from_=THUMB_WIDTH_MIN", text)
+        self.assertIn("to=THUMB_WIDTH_MAX", text)
+        # The old hardcoded literal must be gone, or the Spinbox drifts again.
+        self.assertNotIn("from_=300, to=1600", text)
+
+    def test_desktop_clamps_out_of_range_stored_value(self):
+        """A config written by an older build (limit was 1600) must not brick
+        the app: FilmProcessor.run() rejects it outright, so the desktop side has
+        to clamp on load rather than let the user hit an opaque config error.
+        """
+        ui = pathlib.Path(__file__).resolve().parent.parent / "ui" / "app.py"
+        text = ui.read_text(encoding="utf-8")
+        self.assertIn("max(THUMB_WIDTH_MIN, min(THUMB_WIDTH_MAX", text)
+
+    def test_clamp_produces_an_acceptable_value_for_any_input(self):
+        """Mirror of the desktop clamp expression, over the nasty inputs."""
+        default = FIELD_DEFS["thumb_width"]["default"]
+        for stored in (None, 0, -500, 100, 299, 1600, 99999, 10**9):
+            with self.subTest(stored=stored):
+                value = stored or default
+                if not (THUMB_WIDTH_MIN <= value <= THUMB_WIDTH_MAX):
+                    value = max(THUMB_WIDTH_MIN, min(THUMB_WIDTH_MAX, value))
+                valid, errors = validate_config({"thumb_width": value})
+                self.assertTrue(valid, f"clamp({stored}) -> {value}: {errors}")
 
 
 # ====================================================================

@@ -27,7 +27,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from PIL import Image, ImageOps
 
-from processor.config_schema import default_sub_format, validate_config
+from processor.config_schema import (
+    THUMB_WIDTH_MAX,
+    THUMB_WIDTH_MIN,
+    default_sub_format,
+    validate_config,
+)
 from processor.image_pipeline import process_135_image as _process_135_image
 from processor.image_pipeline import process_120_image as _process_120_image
 from processor.api_render import render_135, render_120
@@ -149,7 +154,12 @@ async def render_film_sheet(
     images: list[UploadFile] = Form(..., description="胶片扫描图片（支持 JPG/PNG/TIFF/BMP，可多选）"),
     film_format: str = Form("135", description="画幅：135 或 120"),
     sub_format: str = Form("", description="子画幅：135 支持 标准/半格/方形/XPan；120 支持 645/66/67/68/69/612/617/624。留空则用该画幅的默认子画幅"),
-    thumb_width: int = Form(400, ge=300, le=1200, description="缩略图宽度（300-1200px）"),
+    thumb_width: int = Form(
+        400,
+        ge=THUMB_WIDTH_MIN,
+        le=THUMB_WIDTH_MAX,
+        description=f"缩略图宽度（{THUMB_WIDTH_MIN}-{THUMB_WIDTH_MAX}px）",
+    ),
     columns: int = Form(6, ge=1, le=20, description="每行列数"),
     spacing: int = Form(20, ge=0, le=200, description="图片间距"),
     force_landscape: bool = Form(True, description="强制横向（竖图自动旋转90°）"),
