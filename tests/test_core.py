@@ -609,6 +609,143 @@ class TestLayoutConsistency(unittest.TestCase):
 
 
 # ====================================================================
+# 成片字体
+# ====================================================================
+
+class TestOutputFont(unittest.TestCase):
+    """成片字体（`utils.helpers.get_system_font`）必须是**简体**字面。
+
+    回归的是三个叠在一起的老问题，每一个单独看都不显眼：
+
+    1. macOS 14 起 `/System/Library/Fonts/PingFang.ttc` 不再提供（改由
+       MobileAsset 下发、路径带内容哈希），写死路径就会**静默跳到下一候选**；
+    2. 老代码 `ImageFont.truetype(path, size)` 没给 index，而 .ttc 的 **index 0
+       是繁体面**（`STHeiti*.ttc` 0=Heiti TC / 1=Heiti SC，`PingFang.ttc`
+       0=HK 3=SC）—— 等于给简体界面配繁体字形；
+    3. 修 ② 时立的规则：候选按「期望家族」扫字面，**家族对不上要跳过**，
+       退回 index 0 就等于把 ② 又犯一遍。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import utils.helpers as H
+        cls.H = H
+        cls.path, cls.idx = H._resolve_font()
+
+    def _face_family(self, path, idx):
+        from PIL import ImageFont
+        return ImageFont.truetype(path, 20, index=idx).getname()[0]
+
+    # ---- 通用不变量（跨平台都该成立） ----
+
+    def test_resolved_face_is_simplified(self):
+        """选中的字面不能是繁体/香港/澳门面。"""
+        if not self.path:
+            self.skipTest("本机没有可用字体")
+        fam = self._face_family(self.path, self.idx)
+        for bad in ("TC", "HK", "MO"):
+            self.assertFalse(fam.endswith(bad), "选到了非简体面: %s" % fam)
+
+    def test_get_system_font_honours_the_face_index(self):
+        """端到端：get_system_font 必须用解析出的**那个字面**，而不是 index 0。
+
+        老代码在这里会红 —— 它拿到的是同一文件里的繁体面。
+        """
+        if not self.path:
+            self.skipTest("本机没有可用字体")
+        got = self.H.get_system_font(20)
+        self.assertEqual(got.getname()[0], self._face_family(self.path, self.idx))
+
+    @unittest.skipUnless(sys.platform == "darwin", "候选表按平台分叉，此处只测 macOS")
+    def test_pingfang_precedes_the_heiti_fallback(self):
+        """PingFang SC 必须排在 STHeiti 之前，否则简体面永远轮不到。"""
+        specs = [spec for spec, _fam, _sty in self.H._font_candidates()]
+        i_pf = next(i for i, s in enumerate(specs) if "PingFang" in s)
+        i_st = next(i for i, s in enumerate(specs) if "STHeiti" in s)
+        self.assertLess(i_pf, i_st)
+
+    # ---- 字形级证据 ----
+
+    @unittest.skipUnless(sys.platform == "darwin", "只在 macOS 上验简繁字形")
+    def test_glyphs_are_simplified_not_traditional(self):
+        """字形级证据：成片字体画出来的字必须等于 **SC** 面、不等于 HK/TC 面。
+
+        ⚠️ **别拿 getbbox 当判据** —— PingFang 各地区面的轮廓差异极细微，
+        140 个常用字里只有 4 个的 bbox 差 1px，而且「写」在 TC/SC 两面 bbox
+        **完全相同**（它是 HK/SC 才不同）。要拿字形**位图**逐像素比：同一个字
+        HK 与 SC 差 500+ 像素，信号足够强，也不会被 1px 噪声带偏。
+        """
+        from PIL import Image, ImageDraw, ImageFont
+
+        if not self.H._expand(self.H._PINGFANG_GLOB):
+            self.skipTest("本机没有 PingFang（退到 Heiti 的情形由 "
+                          "test_family_is_matched_not_index0 覆盖）")
+
+        # 本机能提供 PingFang SC，就**必须**用它 —— 不能悄悄退到 Hiragino/STHeiti
+        self.assertEqual(self._face_family(self.path, self.idx), "PingFang SC",
+                         "本机有 PingFang，成片字体却选用了 %s" % self.path)
+
+        # 对照面取自**解析出的那个文件**：若机器上同时存在旧位置与新位置两份
+        # PingFang，版本不同会让位图有细微差别，跨文件比会误报。
+        sc_i = self.H._scan_face(self.path, "PingFang SC", "regular")
+        hk_i = self.H._scan_face(self.path, "PingFang HK", "regular")
+        self.assertIsNotNone(hk_i, "同一文件里应有 HK 面可作对照")
+        self.assertNotEqual(sc_i, hk_i)
+
+        px = 48
+
+        def ink(font, ch):
+            im = Image.new("L", (px * 2, px * 2), 0)
+            ImageDraw.Draw(im).text((px // 2, px // 2), ch, font=font, fill=255)
+            return im.tobytes()
+
+        def face(idx):
+            return ImageFont.truetype(self.path, px, index=idx)
+
+        got = self.H.get_system_font(px)          # 走生产路径拿到的字体
+        probes = "写录似俊龙丑丰丽亲优令"
+        differs_from_hk = 0
+        for ch in probes:
+            sc_ink = ink(face(sc_i), ch)
+            self.assertEqual(ink(got, ch), sc_ink, "「%s」不是 SC 面字形" % ch)
+            if ink(face(hk_i), ch) != sc_ink:
+                differs_from_hk += 1
+        # 探针本身要有鉴别力：若这 12 个字的 HK/SC 位图都一样，这个断言就测不出
+        # 任何东西（老代码会静默通过）。
+        self.assertGreaterEqual(
+            differs_from_hk, 5,
+            "探针 %s 的 HK/SC 字形差异不足，断言没有鉴别力" % probes)
+
+    # ---- _scan_face 的规则本身 ----
+
+    @unittest.skipUnless(os.path.exists("/System/Library/Fonts/STHeiti Medium.ttc"),
+                         "需要 STHeiti 才能验证 index 0/1 的区别")
+    def test_family_is_matched_not_index0(self):
+        p = "/System/Library/Fonts/STHeiti Medium.ttc"
+        self.assertEqual(self._face_family(p, 0), "Heiti TC", "前提：index 0 是繁体")
+        self.assertEqual(self.H._scan_face(p, "Heiti SC", "medium"), 1)
+        self.assertEqual(self.H._scan_face(p, "Heiti TC", "medium"), 0)
+
+    def test_unknown_family_yields_none(self):
+        """找不到该家族必须返回 None（让调用方跳到下一候选），不能退回 index 0。"""
+        p = next((x for x in self.H._expand("/System/Library/Fonts/STHeiti Medium.ttc")), None)
+        if not p:
+            self.skipTest("需要 STHeiti")
+        self.assertIsNone(self.H._scan_face(p, "No Such Family", "regular"))
+        # family=None 表示「不挑家族」，这时取 index 0 是对的
+        self.assertEqual(self.H._scan_face(p, None, None), 0)
+
+    def test_style_words_cover_the_w3_w6_naming(self):
+        """Hiragino 的字面名是 W3/W6 而不是 Regular —— 关键词表必须认。"""
+        p = next((x for x in self.H._expand("/System/Library/Fonts/Hiragino Sans GB.ttc")), None)
+        if not p:
+            self.skipTest("需要 Hiragino Sans GB")
+        idx = self.H._scan_face(p, "Hiragino Sans GB", "regular")
+        self.assertEqual(idx, 0, "W3 应被判为 regular")
+        self.assertEqual(self._face_family(p, idx), "Hiragino Sans GB")
+
+
+# ====================================================================
 # Run
 # ====================================================================
 

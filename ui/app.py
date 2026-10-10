@@ -86,12 +86,36 @@ THEMES = {
     },
 }
 
-# 字体：优先微软雅黑（Windows），退回到等线/黑体/默认
+# 主字体候选：按平台排，取第一个系统里真实存在的。
+#
+# ⚠️ 判断字体有没有中文字形**只能靠家族名白名单**，不能靠「量一个汉字的宽度」：
+# macOS 的 CoreText 是逐字回退的，Tahoma / Helvetica 这类没有任何 CJK 字形的
+# 家族，measure("中") 照样返回正常宽度（本机实测 Tahoma 与 Arial Unicode MS 量
+# 「中」都给 13px，和真中文字体一模一样）—— 量宽度完全分辨不出来。
+#
+# 曾经的候选表清一色是 Windows 字体（微软雅黑 / Segoe UI / DengXian），在 macOS
+# 上全军覆没，只剩 Tahoma 兜底。Tahoma 没有中文字形，中文全靠 Tk 逐字回退，
+# 字重和行高都不受控（同一个标签里中英文字面来自不同字体）。
+_FONT_CANDIDATES = {
+    "win32":  ("Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑",
+               "DengXian", "Segoe UI", "Tahoma"),
+    "darwin": ("PingFang SC", "Hiragino Sans GB", "Heiti SC", "STHeiti",
+               "Songti SC", "Arial Unicode MS"),
+    "linux":  ("Noto Sans CJK SC", "Source Han Sans SC",
+               "WenQuanYi Micro Hei", "DejaVu Sans"),
+}
+# 平台候选全落空时的通用兜底（这些在三大平台上通常至少有一个）
+_FONT_FALLBACK = ("Helvetica Neue", "Helvetica", "Tahoma")
+
+
 def _pick_font(root):
+    """挑一个系统里真实存在的主字体，优先中文无衬线体。
+
+    返回的是**家族名**（喂给 tkfont.Font 用），不是文件路径。
+    """
     from tkinter import font as tkfont
     families = set(tkfont.families(root))
-    for cand in ("Microsoft YaHei UI", "微软雅黑", "Microsoft YaHei",
-                 "Segoe UI", "DengXian", "Tahoma"):
+    for cand in _FONT_CANDIDATES.get(sys.platform, ()) + _FONT_FALLBACK:
         if cand in families:
             return cand
     return "TkDefaultFont"
@@ -173,7 +197,7 @@ class App:
         self.processor = None
         self.info_labels = {}
         self.pending_roll = None      # 渲染成功后回写的卷宗（主线程用）
-        self.font = _pick_font(root)          # 主字体（微软雅黑）
+        self.font = _pick_font(root)          # 主字体家族（见 _FONT_CANDIDATES）
         self._font_widgets = []               # 需随主题更新字体的控件
         self._pages = []                      # 页面 wrapper 列表
         self._page_titles = []                # [(标题, 图标名)] 供分段导航使用
