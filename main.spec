@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
 a = Analysis(
     ['main.py'],
     pathex=['.', 'ui', 'processor', 'engine', 'utils', 'filmsheet', 'archive'],
@@ -78,7 +80,6 @@ exe = EXE(
     icon=None if sys.platform == 'darwin' else 'assets/icon.ico',
 )
 
-import sys
 if sys.platform == 'darwin':
     # A directory-style app keeps native libraries in Contents/Frameworks.
     # Unlike a one-file executable it does not unpack Pillow/Tk to a temporary
