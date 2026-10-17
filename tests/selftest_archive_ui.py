@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""底片册界面的无头自测脚本。
+"""银盐册界面的无头自测脚本。
 
 跑法：
     /Library/Frameworks/Python.framework/Versions/3.14/bin/python3 tests/selftest_archive_ui.py
@@ -165,7 +165,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="filmsheet-ui-selftest-")
     try:
         svc = build_fixture(tmp)
-        print(f"\n=== 底片册界面自测 ===")
+        print(f"\n=== 银盐册界面自测 ===")
 
         # ---------- 基本渲染 ----------
         root, app = make_app(svc, "1200x780+0+0")
@@ -179,10 +179,10 @@ def main():
         # 真实运行整页是空白的 —— 按坐标重绘的预览脚本完全看不出这个问题。
         fw, fh = ap.frame.winfo_width(), ap.frame.winfo_height()
         check(ap.frame.winfo_manager() != "",
-              "底片册容器被布局管理器接管", f"manager={ap.frame.winfo_manager()!r}")
+              "银盐册容器被布局管理器接管", f"manager={ap.frame.winfo_manager()!r}")
         check(fw > 10 and fh > 10,
-              "底片册容器尺寸已计算", f"{fw}x{fh}")
-        check(ap.frame.winfo_viewable() == 1, "底片册可见")
+              "银盐册容器尺寸已计算", f"{fw}x{fh}")
+        check(ap.frame.winfo_viewable() == 1, "银盐册可见")
         cvs = ap.canvas
         check(cvs.winfo_width() > 10 and cvs.winfo_height() > 10,
               "网格画布有实际尺寸", f"{cvs.winfo_width()}x{cvs.winfo_height()}")

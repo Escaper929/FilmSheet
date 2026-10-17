@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FilmSheet 底片册（Archive）。
+"""FilmSheet 银盐册（Archive）。
 
 把「一卷胶片」从一次性渲染任务提升为独立实体：每次生成留下可再次查阅、
 可重新出图、可检索的记录。

@@ -29,7 +29,7 @@ PAGES = [
     ("画幅与排版", "grid"),
     ("外观", "palette"),
     ("拍摄信息", "camera"),
-    ("底片册", "archive"),
+    ("银盐册", "archive"),
 ]
 
 # ::: 界面双主题调色板（macOS 风格） :::
@@ -123,7 +123,7 @@ def _pick_font(root):
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"FilmSheet {__VERSION__} @Escaper")
+        self.root.title("FilmSheet · 菲页")
         # 尺寸按实测取，不凭感觉给大数（原来是写死的 720x780，又窄又高，
         # 内容只占一半，底部空出一大片）：
         #   宽 900 —— 两栏卡片各留得下「标签 + 输入框 + 按钮」一行
@@ -139,8 +139,8 @@ class App:
         cfg = load_config()
         self.pack_history = cfg.get("pack_images", [])
 
-        # 底片册：领域层无 Tk 依赖，这里只做实例持有。
-        # 自动建卷默认开启，可在底片册页面关掉。
+        # 银盐册：领域层无 Tk 依赖，这里只做实例持有。
+        # 自动建卷默认开启，可在银盐册页面关掉。
         self.archive_service = ArchiveService()
         self.archive_service.enabled = cfg.get("archive_auto", True)
         self.archive_page = ArchivePage(self)
@@ -238,7 +238,7 @@ class App:
             canvas.configure(scrollregion=canvas.bbox("all"))
         except tk.TclError:
             pass
-        # 底片册内部有自己的网格，靠这里把实际可用宽度喂给它。
+        # 银盐册内部有自己的网格，靠这里把实际可用宽度喂给它。
         # 不用它自己绑 <Configure>：首次布局时宽度是 1，算出的列数会定型，
         # 之后 canvas 再变宽也不会重排。
         try:
@@ -322,7 +322,7 @@ class App:
     def _unregister_themed(self, widget):
         """把已销毁的控件从换肤名单里摘掉。
 
-        动态创建又重建的控件（底片册卡片、详情按钮、对话框按钮）生命周期
+        动态创建又重建的控件（银盐册卡片、详情按钮、对话框按钮）生命周期
         短于 App，不注销就会在下次换肤时抛 "invalid command name"，
         把整个 _apply_theme 打断，界面停在半换肤状态。
         """
@@ -793,8 +793,8 @@ class App:
         self._update_batch_checkbox_label()
         self.auto_adjust_columns()
 
-        # ---- 底片册（放在最后建：它依赖前面建好的 controls 与主题）----
-        archive_page = self._add_page("底片册")
+        # ---- 银盐册（放在最后建：它依赖前面建好的 controls 与主题）----
+        archive_page = self._add_page("银盐册")
         self.archive_page.build(archive_page)
 
         # 默认显示第一个页面
@@ -1112,7 +1112,7 @@ class App:
 
         # 在临时窗口中显示
         preview_win = tk.Toplevel(self.root)
-        preview_win.title(f"FilmSheet {__VERSION__} @Escaper — Preview")
+        preview_win.title("FilmSheet · 菲页 — 预览")
         preview_win.geometry(f"{img.width + 40}x{img.height + 80}")
 
         # Canvas + scrollbar
@@ -1180,7 +1180,7 @@ class App:
 
         # Import the image-processing stack only once the user starts work.
         from processor.film_processor import FilmProcessor
-        # on_done 把产物与张数回写底片册；归档失败不影响出图（processor 内部已兜住）
+        # on_done 把产物与张数回写银盐册；归档失败不影响出图（processor 内部已兜住）
         self.processor = FilmProcessor(config, on_done=self._on_render_done)
         threading.Thread(target=self.run_worker, daemon=True).start()
 
@@ -1225,11 +1225,11 @@ class App:
         msg = f"文件已保存至：\n{out}"
         roll = self.pending_roll
         if roll is not None:
-            msg += f"\n\n已归档到「底片册」：{roll.title}"
+            msg += f"\n\n已归档到「银盐册」：{roll.title}"
         messagebox.showinfo("Success", msg)
 
     def _after_archive(self):
-        """渲染成功后刷新底片册并提示归档结果（在主线程调用）。"""
+        """渲染成功后刷新银盐册并提示归档结果（在主线程调用）。"""
         roll = self.pending_roll
         self.pending_roll = None
         if roll is None:
@@ -1237,13 +1237,13 @@ class App:
         try:
             self.archive_page.refresh()
         except Exception as e:
-            print(f"刷新底片册失败: {e}", file=sys.stderr)
+            print(f"刷新银盐册失败: {e}", file=sys.stderr)
         err = self.archive_service.last_error
         if err:
             self.set_status(f"已生成并归档，但有警告：{err}", "warning")
 
     # ------------------------------------------------------------------
-    # 从底片册回灌参数
+    # 从银盐册回灌参数
     # ------------------------------------------------------------------
 
     def reload_from_archive(self, roll):
@@ -1440,7 +1440,7 @@ class App:
         if getattr(self, "nav", None) is not None:
             self.nav.set_index(self._current_page)
 
-        # 底片册页自绘卡片与详情面板需按新调色板重建
+        # 银盐册页自绘卡片与详情面板需按新调色板重建
         try:
             self.archive_page.apply_theme(p, fonts)
         except Exception:

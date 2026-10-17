@@ -169,7 +169,7 @@ class Roll:
         """由稳定字段派生 id。
 
         刻意**不**用 uuid：同一卷反复生成时要落回同一条记录，用 uuid 每次都是
-        新条目，底片册立刻被重复项淹没。
+        新条目，银盐册立刻被重复项淹没。
         """
         key = "|".join([_s(roll_no).lower(), _s(shoot_date), _s(film).lower()])
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]

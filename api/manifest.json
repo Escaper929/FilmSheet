@@ -1,7 +1,7 @@
 {
-  "name": "FilmSheet 胶片排版",
-  "short_name": "FilmSheet",
-  "description": "将数码胶片扫描件变成专业的灯箱灯板 / 接触印相作品",
+  "name": "FilmSheet · 菲页",
+  "short_name": "菲页",
+  "description": "将数码胶片扫描件变成专业的灯箱灯板 / 接触印相作品，多卷归档收入你的私人「银盐册」",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",

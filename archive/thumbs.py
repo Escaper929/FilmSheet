@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """缩略图生成与磁盘缓存。
 
-底片册网格要显示每卷的样片，但产物可能是 6000px宽的大图，直接塞进 Tk 会
+银盐册网格要显示每卷的样片，但产物可能是 6000px宽的大图，直接塞进 Tk 会
 把内存吃光并卡住界面。这里的策略：
 
 - 缩略图统一按**最长边**缩放（不是固定宽度），网格单元才是固定宽高比
@@ -20,7 +20,7 @@ _CACHE_QUALITY = 82
 
 
 def thumbs_dir() -> str:
-    """缩略图缓存目录：跟随底片册位置，挪库时一起挪。"""
+    """缩略图缓存目录：跟随银盐册位置，挪库时一起挪。"""
     from .store import archive_dir
     return os.path.join(archive_dir(), "thumbs")
 
@@ -43,7 +43,7 @@ def make_thumb(src_path: str, dst_path: str,
                box: tuple[int, int] = THUMB_BOX) -> str | None:
     """生成缩略图并缓存。成功返回 dst_path，失败返回 None（不抛异常）。
 
-    缩略图是锦上添花，源图坏了不该让底片册整页打不开——所以全程吞异常。
+    缩略图是锦上添花，源图坏了不该让银盐册整页打不开——所以全程吞异常。
     """
     if not src_path or not os.path.isfile(src_path):
         return None

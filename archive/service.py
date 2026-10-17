@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ArchiveService —— 底片册的门面。
+"""ArchiveService —— 银盐册的门面。
 
 上层（UI / API）只跟这个类打交道，不直接碰 store 或 models。它保证几条
 不变量：
@@ -52,7 +52,7 @@ class ArchiveService:
 
     def record_render(self, config: dict, outputs: list[dict] | list[Output],
                       auto_archive: bool | None = None) -> Roll | None:
-        """把一次渲染结果写进底片册。
+        """把一次渲染结果写进银盐册。
 
         Args:
             config: 本次渲染的完整 config（含 info_* 与 frame_count）

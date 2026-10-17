@@ -89,7 +89,7 @@ async def _read_upload(upload: UploadFile, remaining_bytes: int) -> bytes:
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="FilmSheet API",
+    title="FilmSheet · 菲页 API",
     description="胶片扫描排版渲染服务 — 把你的数码扫描件变成真实的灯箱灯板 / 接触印相作品。",
     version=__VERSION__,
 )

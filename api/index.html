@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>FilmSheet {VERSION} 胶片排版</title>
+<title>FilmSheet · 菲页</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="FilmSheet">
+<meta name="apple-mobile-web-app-title" content="菲页">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#ff8c3c">
 <link rel="manifest" href="/manifest.json">
@@ -406,7 +406,7 @@ body {
 
 <!-- Header -->
 <div class="header">
-  <h1>🎞 FilmSheet </h1>
+  <h1>🎞 FilmSheet · 菲页</h1>
   <div class="api-url" onclick="showApiModal()">📡 API地址</div>
 </div>
 
@@ -995,7 +995,7 @@ async function shareResult() {
     const blob = await (await fetch(img.src)).blob();
     const file = new File([blob], 'filmsheet.jpg', { type: 'image/jpeg' });
     if (navigator.share) {
-      await navigator.share({ files: [file], title: 'FilmSheet 胶片排版' });
+      await navigator.share({ files: [file], title: 'FilmSheet · 菲页' });
     } else {
       showToast('您的浏览器不支持分享');
     }

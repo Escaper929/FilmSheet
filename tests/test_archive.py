@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""底片册测试。
+"""银盐册测试。
 
 不依赖 GUI：archive/ 包刻意不导入 tkinter，所以这些测试可以直接跑。
 """
@@ -341,7 +341,7 @@ class TestStore(TempStoreCase):
     def test_one_bad_record_does_not_wipe_the_library(self):
         """回归：任何一条记录抛异常，整库都会被改名备份、当空库启动。
 
-        用户看到的是「底片册还是空的」，得自己去目录里翻 `.corrupt-*` 手工修。
+        用户看到的是「银盐册还是空的」，得自己去目录里翻 `.corrupt-*` 手工修。
         产物层和数据层早就逐条容错了，只有列表层是全有全无。
         """
         good = Roll.from_config(self.make_config())
@@ -655,7 +655,7 @@ class TestService(TempStoreCase):
 # --------------------------------------------------------------------------- #
 
 class TestArchiveLocation(unittest.TestCase):
-    """底片册位置解析：默认 / 配置 / 环境变量。"""
+    """银盐册位置解析：默认 / 配置 / 环境变量。"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="filmsheet-loc-")
@@ -709,7 +709,7 @@ class TestArchiveLocation(unittest.TestCase):
         with open(pb, encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual([r["roll_no"] for r in data["rolls"]], ["X02"])
-        # 旧目录的文件不该被动 —— 那是另一个底片册的数据
+        # 旧目录的文件不该被动 —— 那是另一个银盐册的数据
         self.assertEqual(os.path.getmtime(pa), before, "旧目录文件不应被改写")
         with open(pa, encoding="utf-8") as f:
             old = json.load(f)

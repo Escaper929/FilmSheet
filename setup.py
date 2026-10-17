@@ -13,8 +13,8 @@ OPTIONS = {
                  'archive.models', 'archive.store', 'archive.service',
                  'archive.thumbs'],
     'plist': {
-        'CFBundleName': f'FilmSheet v{__import__("filmsheet._version", fromlist=["__VERSION__"]).__VERSION__} @Escaper',
-        'CFBundleDisplayName': f'FilmSheet v{__import__("filmsheet._version", fromlist=["__VERSION__"]).__VERSION__} @Escaper',
+        'CFBundleName': 'FilmSheet · 菲页',
+        'CFBundleDisplayName': 'FilmSheet · 菲页',
         'CFBundleIdentifier': 'com.filmsheet.app',
         'CFBundleVersion': '1.0.0',
         'CFBundleShortVersionString': '1.0.0',

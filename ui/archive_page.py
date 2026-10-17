@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""底片册页面。
+"""银盐册页面。
 
 作为顶部导航的第 5 页，提供：
 - 网格卡片浏览（缩略图 + 卷号 + 胶卷/相机 + 日期 + 张数）
@@ -96,7 +96,7 @@ DETAIL_IMG_MAX = (DETAIL_INNER_W, 176)
 SORTS = [
     ("date_desc", "拍摄日期 ↓"),
     ("date_asc", "拍摄日期 ↑"),
-    ("created_desc", "最近归档"),
+    ("created_desc", "最近入册"),
     ("title", "卷号"),
     ("frames_desc", "张数"),
 ]
@@ -134,7 +134,7 @@ def _reveal(path: str):
 
 
 class ArchivePage:
-    """底片册页。挂在 App 上，自身不继承 Tk 类。"""
+    """银盐册页。挂在 App 上，自身不继承 Tk 类。"""
 
     def __init__(self, app):
         self.app = app
@@ -189,7 +189,7 @@ class ArchivePage:
         self._bar = bar
 
         # 分两行：筛选条件一行、操作按钮一行。
-        # 原来全挤在一行，窗口一窄右侧按钮就被推出可视区（截图里「归档位置」
+        # 原来全挤在一行，窗口一窄右侧按钮就被推出可视区（截图里「银盐册位置」
         # 只剩半个字）。分行之后任何宽度下按钮都完整可见。
         filter_row = tk.Frame(bar, bg=c["bg"])
         filter_row.pack(fill=tk.X)
@@ -253,8 +253,8 @@ class ArchivePage:
                        command=self.on_import_folder,
                        variant="secondary", icon="import", height=30).pack(
             side=tk.RIGHT, padx=(8, 0))
-        # 底片册位置属于低频但高影响操作（挪数据），视觉上做得轻一点
-        self.app._pill(action_row, text="底片册位置",
+        # 银盐册位置属于低频但高影响操作（挪数据），视觉上做得轻一点
+        self.app._pill(action_row, text="银盐册位置",
                        command=self.on_change_location,
                        variant="ghost", icon="folder", height=30).pack(
             side=tk.LEFT)
@@ -450,10 +450,10 @@ class ArchivePage:
         self._show_detail(sel)
 
     def _update_facet_options(self):
-        """刷新下拉选项（胶卷/相机/年份会随归档增长变化）。
+        """刷新下拉选项（胶卷/相机/年份会随收录增长变化）。
 
         必须真正写回 Combobox，只改 StringVar 不会更新下拉列表。
-        用户当前选中的值要保住；若该值因归档被删而消失，才退回占位文案。
+        用户当前选中的值要保住；若该值因收录被删而消失，才退回占位文案。
         """
         facets = self.service.facets()
         if not hasattr(self, "_filter_combos"):
@@ -559,7 +559,7 @@ class ArchivePage:
         self.grid_host.grid_columnconfigure(0, weight=1)
         self.grid_host.grid_rowconfigure(0, weight=1)
         if f["total"] == 0:
-            msg = ("底片册还是空的。\n\n"
+            msg = ("银盐册还是空的。\n\n"
                    "每次「开始生成」成功后会自动建卷；\n"
                    "已拍但还没冲扫的底片可以用「补录卷宗」先登记。")
         else:
@@ -889,7 +889,7 @@ class ArchivePage:
         return
 
     def on_change_location(self):
-        """更改底片册位置。
+        """更改银盐册位置。
 
         这是最容易把数据"弄丢"的操作：配置一改，旧路径下的文件还在，但应用
         会像凭空消失一样看不见它们。所以流程必须是**先复制、再切配置、最后
@@ -901,7 +901,7 @@ class ArchivePage:
         cur = S.archive_dir()
         is_default = not load_config().get("archive_dir")
         dlg = tk.Toplevel(self.app.root)
-        dlg.title("底片册位置")
+        dlg.title("银盐册位置")
         dlg.transient(self.app.root)
         dlg.resizable(False, False)
 
@@ -909,7 +909,7 @@ class ArchivePage:
         body = tk.Frame(dlg, bg=c["bg"], padx=18, pady=16)
         body.pack(fill=tk.BOTH, expand=True)
 
-        card = RoundedCard(body, c, self.app.fonts, title="底片册位置", radius=12, pad=14)
+        card = RoundedCard(body, c, self.app.fonts, title="银盐册位置", radius=12, pad=14)
         card.pack(fill=tk.X)
         inner = card.body
         inner.columnconfigure(0, weight=1)
@@ -933,7 +933,7 @@ class ArchivePage:
         entry.grid(row=3, column=0, sticky=tk.EW, pady=(2, 8))
 
         def browse():
-            d = filedialog.askdirectory(title="选择底片册位置")
+            d = filedialog.askdirectory(title="选择银盐册位置")
             if d:
                 new_var.set(d)
 
@@ -950,7 +950,7 @@ class ArchivePage:
 
         hint = tk.Label(
             body,
-            text=("底片册数据会复制到新位置，旧文件保留不动。\n"
+            text=("银盐册数据会复制到新位置，旧文件保留不动。\n"
                   "确认新位置的数据无误后，可手动删除旧目录。\n"
                   "留空则恢复默认位置（与配置文件同目录）。"),
             bg=c["bg"], fg=c["fg_muted"], font=self.app.fonts["caption"],
@@ -1001,8 +1001,8 @@ class ArchivePage:
         target_file = os.path.join(new_dir, S.ARCHIVE_FILENAME)
         if os.path.exists(target_file):
             if not messagebox.askyesno(
-                    "目标已有底片册数据",
-                    f"目标位置已存在底片册文件：\n{target_file}\n\n"
+                    "目标已有银盐册数据",
+                    f"目标位置已存在银盐册文件：\n{target_file}\n\n"
                     f"继续会覆盖它。建议先备份。\n确定继续吗？",
                     parent=self._loc_dialog):
                 return
@@ -1014,7 +1014,7 @@ class ArchivePage:
                 shutil.copy2(old_file, target_file)
             except OSError as e:
                 messagebox.showerror("迁移失败",
-                                     f"复制底片册数据失败，已保持原位置不变：\n{e}",
+                                     f"复制银盐册数据失败，已保持原位置不变：\n{e}",
                                      parent=self._loc_dialog)
                 return
 
@@ -1039,10 +1039,10 @@ class ArchivePage:
         self.service.store.load(force=True)
         self._loc_dialog.destroy()
         self.refresh()
-        self.app.set_status(f"底片册已迁移至：{new_dir}", "success")
+        self.app.set_status(f"银盐册已迁移至：{new_dir}", "success")
         messagebox.showinfo(
             "迁移完成",
-            f"底片册数据已复制到：\n{new_dir}\n\n"
+            f"银盐册数据已复制到：\n{new_dir}\n\n"
             f"旧文件仍保留在：\n{old_file}\n\n"
             f"确认新数据无误后，可手动删除旧文件。",
             parent=self.app.root)
@@ -1053,8 +1053,8 @@ class ArchivePage:
     def on_delete(self, roll):
         if not messagebox.askyesno(
                 "删除卷宗",
-                f"确定从底片册移除「{roll.title}」吗？\n\n"
-                f"这只删除底片册记录，磁盘上的图片不会被删。\n"
+                f"确定从银盐册移除「{roll.title}」吗？\n\n"
+                f"这只删除银盐册记录，磁盘上的图片不会被删。\n"
                 f"（如需连图一起删，请在确定后另行手动删除文件）"):
             return
         if self.service.delete(roll.id):
@@ -1254,7 +1254,7 @@ class _Tip:
 
 
 class RollCard(tk.Frame):
-    """底片册网格里的一张卷宗卡片。"""
+    """银盐册网格里的一张卷宗卡片。"""
 
     def __init__(self, page: ArchivePage, roll, width: int, height: int = None):
         # 行数跟着实际内容走：相机为空少一行，产物丢失多一行。

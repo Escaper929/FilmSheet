@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""底片册持久化 —— 单个 JSON 文件。
+"""银盐册持久化 —— 单个 JSON 文件。
 
 为什么不是 SQLite：几十到几千卷的量级，JSON 的读取是毫秒级；换来的是
 数据可读、可diff、手改方便、备份就是拷一个文件。对这个工具来说更值。
@@ -26,7 +26,7 @@ SCHEMA_VERSION = 1
 
 ARCHIVE_FILENAME = "filmsheet_archive.json"
 
-# 允许用环境变量把底片册指向别处（NAS / 同步盘 / 测试目录）。
+# 允许用环境变量把银盐册指向别处（NAS / 同步盘 / 测试目录）。
 # 优先级：环境变量 > filmsheet_config.json 里的archive_dir > 默认配置目录。
 # 环境变量最优先是因为它连配置文件都读不到时也能生效（配置损坏时的逃生通道）。
 ENV_ARCHIVE_DIR = "FILMSHEET_ARCHIVE_DIR"
@@ -46,19 +46,19 @@ def default_config_dir() -> str:
 
 
 def _configured_dir() -> str:
-    """从配置文件里读用户设定的底片册目录（读不到就返回空串）。"""
+    """从配置文件里读用户设定的银盐册目录（读不到就返回空串）。"""
     try:
         # 延迟导入：store 是领域层，不该硬依赖 utils.helpers
         from utils.helpers import load_config
         v = (load_config() or {}).get("archive_dir", "")
         return v.strip() if isinstance(v, str) else ""
     except Exception:
-        # 配置文件损坏/不存在时不能连带底片册一起打不开
+        # 配置文件损坏/不存在时不能连带银盐册一起打不开
         return ""
 
 
 def archive_dir() -> str:
-    """底片册所在目录。
+    """银盐册所在目录。
 
     默认与配置文件同处（用户找得到）；用户可在配置里改到NAS / 同步盘，
     也可用 ``FILMSHEET_ARCHIVE_DIR`` 环境变量临时覆盖（优先级最高）。
@@ -114,7 +114,7 @@ def _migrate_0_to_1(data: dict) -> dict:
         # 极早期把卷宗直接存成数组
         data = {"rolls": data}
     if not isinstance(data, dict):
-        raise ValueError("底片册文件根节点不是对象或数组")
+        raise ValueError("银盐册文件根节点不是对象或数组")
     data.setdefault("rolls", [])
     if not isinstance(data["rolls"], list):
         data["rolls"] = []
@@ -133,7 +133,7 @@ def migrate(data):
     if isinstance(data, list):
         data = {"rolls": data}
     if not isinstance(data, dict):
-        raise ValueError("底片册文件根节点既不是对象也不是数组")
+        raise ValueError("银盐册文件根节点既不是对象也不是数组")
 
     ver = int(data.get("schema_version") or 0)
     for fn in _MIGRATIONS:
@@ -209,7 +209,7 @@ class ArchiveStore:
         # 逐条容错：一条坏记录只丢它自己。
         #
         # 早先这里是列表推导式，任何一条 `Roll.from_dict` 抛异常都会落到
-        # `except` → 整库改名备份、当空库启动。用户看到的是「底片册还是空的」，
+        # `except` → 整库改名备份、当空库启动。用户看到的是「银盐册还是空的」，
         # 得自己去目录里翻 `.corrupt-*` 手工修 —— 手改 JSON 写错一个字段类型
         # 就够触发。产物层（`_safe_outputs`）和字段层（`Roll.from_dict`）早就
         # 逐条容错了，只有这一层是全有全无。
@@ -227,7 +227,7 @@ class ArchiveStore:
         if bad:
             kept = self._preserve_damaged()
             self.load_warning = (
-                f"底片册有 {bad} 条记录读不出来，已跳过；"
+                f"银盐册有 {bad} 条记录读不出来，已跳过；"
                 f"其余 {len(rolls)} 卷正常。"
                 + (f"原文件已另存为 {kept}" if kept else "（原文件副本创建失败）")
             )
@@ -396,7 +396,7 @@ class ArchiveStore:
         """筛选 + 排序。
 
         关键词在卷号/胶卷/相机/备注/冲洗信息里做不区分大小写的子串匹配——
-        底片册的使用方式是「记不清全名，只记得是台 M6」，模糊比精确好用。
+        银盐册的使用方式是「记不清全名，只记得是台 M6」，模糊比精确好用。
         """
         rolls = self.load()
         kw = keyword.strip().lower()
