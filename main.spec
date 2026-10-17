@@ -4,7 +4,7 @@ a = Analysis(
     ['main.py'],
     pathex=['.', 'ui', 'processor', 'engine', 'utils', 'filmsheet', 'archive'],
     binaries=[],
-    datas=[],
+    datas=[('assets/icon-1024.png', 'assets')],
     hiddenimports=[
         'ui',
         'ui.rounded',
@@ -74,6 +74,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # Windows: exe 资源图标；macOS 的 Dock 图标走 BUNDLE 的 icon（.icns）
+    icon=None if sys.platform == 'darwin' else 'assets/icon.ico',
 )
 
 import sys
@@ -87,11 +89,11 @@ if sys.platform == 'darwin':
         a.zipfiles,
         a.datas,
         name='FilmSheet.app',
-        icon=None,
+        icon='assets/icon.icns',
         bundle_identifier='com.filmsheet.app',
         info_plist={
-            'CFBundleName': 'FilmSheet',
-            'CFBundleDisplayName': 'FilmSheet',
+            'CFBundleName': 'FilmSheet · 菲页',
+            'CFBundleDisplayName': 'FilmSheet · 菲页',
             'CFBundleIdentifier': 'com.filmsheet.app',
             'NSHighResolutionCapable': True,
         },

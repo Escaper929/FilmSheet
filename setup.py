@@ -12,6 +12,7 @@ OPTIONS = {
                  'ui.rounded', 'ui.icons', 'ui.archive_page', 'ui.aa',
                  'archive.models', 'archive.store', 'archive.service',
                  'archive.thumbs'],
+    'iconfile': 'assets/icon.icns',
     'plist': {
         'CFBundleName': 'FilmSheet · 菲页',
         'CFBundleDisplayName': 'FilmSheet · 菲页',

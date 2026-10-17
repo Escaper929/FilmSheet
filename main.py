@@ -18,8 +18,30 @@ if sys.platform == 'win32':
 import tkinter as tk
 from ui.app import App
 
+def _set_window_icon(root):
+    """挂载应用图标（源码运行与 PyInstaller 打包后都生效）。
+
+    assets/icon-1024.png 由 tools/make_icons.py 生成；打包后经
+    sys._MEIPASS 定位。挂不上不影响使用，静默跳过。
+    """
+    try:
+        from PIL import Image, ImageTk
+        candidates = []
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(os.path.join(meipass, "assets", "icon-1024.png"))
+        here = os.path.dirname(os.path.abspath(__file__))
+        candidates.append(os.path.join(here, "assets", "icon-1024.png"))
+        for p in candidates:
+            if os.path.exists(p):
+                root.iconphoto(True, ImageTk.PhotoImage(Image.open(p)))
+                return
+    except Exception:
+        pass
+
 def main():
     root = tk.Tk()
+    _set_window_icon(root)
     app = App(root)
     root.mainloop()
 
