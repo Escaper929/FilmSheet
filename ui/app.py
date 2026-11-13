@@ -7,11 +7,9 @@ import json
 import ctypes
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from filmsheet._version import __VERSION__
-from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, FILM_FORMAT_RATIOS
+from utils.helpers import load_config, save_config, add_pack_image_history, LABEL_MAP, NO_COLON_FIELDS
 from ui.rounded import (RoundedCard, PillButton, SegmentedControl,
                         SlimScrollbar, RoundedScale)
-from ui.icons import draw_icon
 from archive.service import ArchiveService
 from ui.archive_page import ArchivePage
 from processor.config_schema import (
@@ -339,10 +337,6 @@ class App:
                         title_icon=title_icon, radius=radius, pad=pad)
         self._themed.append(c)
         return c
-
-    def _card_body(self, parent, title="", title_icon=None, radius=12, pad=15):
-        """建卡片并直接返回其内容容器（多数调用点只用得到 body）。"""
-        return self._card(parent, title, title_icon, radius, pad).body
 
     def _pill(self, parent, text="", command=None, variant="secondary",
               icon=None, height=34, min_width=0, bg=None, on_card=False):

@@ -104,11 +104,6 @@ class RoundedCard(ThemedMixin, tk.Frame):
 
         self.bind("<Configure>", self._redraw)
 
-    # -- 对外 --
-    def set_title(self, text):
-        if self._title:
-            self._title.config(text=text)
-
     # -- 内部 --
     def _redraw(self, _event=None):
         from ui.icons import draw_icon
@@ -267,14 +262,15 @@ class PillButton(ThemedMixin, tk.Canvas):
         width = max(min_width, need)
 
         super().__init__(parent, width=width, height=height, bg=self._bg,
-                         highlightthickness=0, bd=0, takefocus=1)
+                         highlightthickness=0, bd=0, takefocus=1,
+                         cursor="hand2")
         self._h = height
         self._radius = height / 2.0
         # 抗锯齿图元层。必须在 super().__init__ 之后建立（需要真实 canvas）。
         from ui.aa import CanvasAA
         self._aa = CanvasAA(self)
         if stretch:
-            self.pack_propagate(False) if False else None
+            self.pack_propagate(False)
 
         self.bind("<Configure>", lambda e: self._redraw())
         self.bind("<Enter>", self._on_enter)
@@ -289,7 +285,7 @@ class PillButton(ThemedMixin, tk.Canvas):
     # -- 对外 API（保持与 ttk 调用点兼容） --
     def set_state(self, state):
         self.state = tk.NORMAL if state in (tk.NORMAL, "normal") else tk.DISABLED
-        self.configure(cursor="" if self.state == tk.NORMAL else "")
+        self.configure(cursor="hand2" if self.state == tk.NORMAL else "")
         self._redraw()
 
     def set_text(self, text):

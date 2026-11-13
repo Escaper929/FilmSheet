@@ -5,8 +5,6 @@ Provides the interface that BaseRenderer expects from a FilmProcessor,
 without file I/O, image processing, or UI dependencies.
 """
 
-from PIL import ImageFont
-
 from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
     LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS,

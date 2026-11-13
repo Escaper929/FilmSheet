@@ -42,6 +42,8 @@ def _set_window_icon(root):
 def main():
     root = tk.Tk()
     _set_window_icon(root)
+    # 这个引用不能省：Widget 的 command 闭包不保证持有 App，交出去就可能被回收，
+    # 表现是「点按钮没反应」。pyflakes 会报 unused variable，属误报。
     app = App(root)
     root.mainloop()
 

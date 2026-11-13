@@ -1,4 +1,12 @@
+import os
+import sys
+
 from setuptools import setup
+
+# 版本号只认 filmsheet/_version.py 一处；这里写死会与 CI 改版本的动作脱节，
+# 打包出来的 .app 会一直显示旧版本（之前就是钉在 1.0.0）。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from filmsheet._version import __VERSION__
 
 APP = ['main.py']
 DATA_FILES = []
@@ -17,8 +25,8 @@ OPTIONS = {
         'CFBundleName': 'FilmSheet · 菲页',
         'CFBundleDisplayName': 'FilmSheet · 菲页',
         'CFBundleIdentifier': 'com.filmsheet.app',
-        'CFBundleVersion': '1.0.0',
-        'CFBundleShortVersionString': '1.0.0',
+        'CFBundleVersion': __VERSION__,
+        'CFBundleShortVersionString': __VERSION__,
         'NSHighResolutionCapable': True,
     }
 }

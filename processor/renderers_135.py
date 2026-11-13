@@ -6,7 +6,6 @@ import random
 import time
 
 from .renderer import BaseRenderer
-from engine.film_engine import Strict135FilmEngine
 
 
 class Renderer135(BaseRenderer):
@@ -65,8 +64,6 @@ class Renderer135(BaseRenderer):
         # Single-column mode or single_photo_mode: adjust perforation count
         # based on sub-format, and adjust layout for single-photo mode.
         if cols == 1 or self.config.get('single_photo_mode', False):
-            pitch_mm = self.engine.PITCH_KS_MM if perf_type == "KS" else self.engine.PITCH_BH_MM
-            pitch_px = int(pitch_mm * scale_factor)
             frame_w_mm, frame_h_mm, num_perfs = self.sub_format_configs.get(
                 sub_format, (36, 24, 8))
             # XPan needs more perforations due to wider format
@@ -344,7 +341,6 @@ class Renderer135(BaseRenderer):
         perf_h = layout['perf_h_px'] * scale
 
         # Use custom side gap for multi-photo mode; single-photo uses center-aligned.
-        aa_s = layout.get('aa_scale', 1)
         is_single = layout.get('_single_photo', False)
         big_total_w = layout['big_total_w']
 
@@ -399,7 +395,6 @@ class Renderer135(BaseRenderer):
         frame_w = layout['frame_w_px'] * scale
         frame_h = layout['frame_h_px'] * scale
         frame_top_offset = layout['frame_top_offset_px'] * scale
-        thumb_w = layout['thumb_w'] * scale
 
         # In single-photo mode, center the image on the film strip so that the gap
         # from each outermost perforation to the image edge is equal (symmetric).

@@ -29,7 +29,7 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from ui.rounded import RoundedCard, PillButton, SlimScrollbar
+from ui.rounded import RoundedCard, SlimScrollbar
 from ui.icons import draw_icon
 
 # 网格卡片尺寸（含样片区 + 文字区）
@@ -554,7 +554,6 @@ class ArchivePage:
             pass
 
     def _render_empty(self):
-        c = self.app.colors
         f = self.service.facets()
         self.grid_host.grid_columnconfigure(0, weight=1)
         self.grid_host.grid_rowconfigure(0, weight=1)
@@ -743,7 +742,6 @@ class ArchivePage:
         self._show_detail(self.service.get(roll_id) if roll_id else None)
 
     def _show_detail(self, roll):
-        c = self.app.colors
         # 换了卷宗才回到顶部。不按「每次调用都回顶」做：换肤、编辑保存后都会
         # 重走这里，每次回顶会让面板无缘无故往上跳。
         rid = roll.id if roll is not None else None
@@ -897,10 +895,8 @@ class ArchivePage:
         提示手动清理**，绝不能直接改完配置就宣布成功。
         """
         from archive import store as S
-        from utils.helpers import load_config, save_config
 
         cur = S.archive_dir()
-        is_default = not load_config().get("archive_dir")
         dlg = tk.Toplevel(self.app.root)
         dlg.title("银盐册位置")
         dlg.transient(self.app.root)

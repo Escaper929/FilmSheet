@@ -39,9 +39,6 @@ class ArchiveService:
     def facets(self) -> dict:
         return self.store.facets()
 
-    def reload(self):
-        return self.store.load(force=True)
-
     @property
     def load_warning(self) -> str:
         return self.store.load_warning

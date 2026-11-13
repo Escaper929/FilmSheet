@@ -220,10 +220,6 @@ class Roll:
     #  身份与合并
     # ------------------------------------------------------------------ #
 
-    def matches(self, roll_no: str = "", shoot_date: str = "", film: str = "") -> bool:
-        """判断另一组标识是否指向同一卷（大小写不敏感、空白归一）。"""
-        return self.compute_id(roll_no, shoot_date, film) == self.id
-
     def merge_from(self, other: "Roll") -> "Roll":
         """把另一次生成的结果并入本卷。
 
@@ -296,12 +292,6 @@ class Roll:
             if o.style == STYLE_LIGHTBOX:
                 return o
         return pool[0] if pool else None
-
-    def output_by_style(self, style: str) -> Output | None:
-        for o in self.outputs:
-            if o.style == style:
-                return o
-        return None
 
     def existing_outputs(self) -> list[Output]:
         return [o for o in self.outputs if o.exists()]

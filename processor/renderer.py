@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """Shared rendering infrastructure for 135 and 120 film strips."""
 
-import math
 import os
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageDraw, UnidentifiedImageError
 
-from utils.helpers import STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, open_folder, get_system_font
+from utils.helpers import STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, get_system_font
 
 
 class BaseRenderer:
@@ -119,7 +118,6 @@ class BaseRenderer:
         total_w = content_w + (side_margin * 2) + int(100 * base_scale)
 
         pack_img = self._load_pack_image()
-        has_info = self._has_info()
         info_height = self._compute_info_height(thumb_w, base_scale, pack_img)
 
         info_to_film_gap = int(65 * base_scale)
@@ -167,13 +165,10 @@ class BaseRenderer:
 
     def _compute_info_height(self, thumb_w, base_scale, pack_img):
         has_info = self._has_info()
-        info_font_size = int(34 * thumb_w / 400) if thumb_w > 200 else int(34 * base_scale)
         info_line_height = int(52 * thumb_w / 400) if thumb_w > 200 else int(52 * base_scale)
         info_top_padding = int(20 * thumb_w / 400) if thumb_w > 200 else int(20 * base_scale)
         info_bottom_padding = int(15 * thumb_w / 400) if thumb_w > 200 else int(15 * base_scale)
 
-        lang = self.config.get('info_lang', 'en')
-        label_idx = 0 if lang == 'zh' else 1
         info_data = {key: self.config.get(f'info_{key}', '') for key in LABEL_MAP}
         active_rows = sum(1 for row in INFO_LAYOUT
                           if any(info_data.get(k, '') for k in row if k))
@@ -241,10 +236,8 @@ class BaseRenderer:
         base_scale = layout['base_scale']
         info_height = layout['info_height']
         top_margin = layout['top_margin']
-        top_area_height = layout['top_area_height']
         total_w = layout['total_w']
         side_margin = layout['side_margin']
-        spacing = layout['spacing']
         aa_scale = layout.get('aa_scale', 1)
 
         if info_height == 0:
@@ -357,13 +350,9 @@ class BaseRenderer:
         draw = layout['draw']
         aa_scale = layout.get('aa_scale', 1)
         rows = layout['rows']
-        cols = layout['cols']
         strip_h = layout['strip_h'] * aa_scale
         bag_gap = layout['bag_gap'] * aa_scale
         top_area_height = layout['top_area_height'] * aa_scale
-        side_margin = layout['side_margin'] * aa_scale
-        spacing = layout['spacing'] * aa_scale
-        thumb_w = layout['thumb_w'] * aa_scale
         total_w = layout['big_total_w']
         film_base = self.colors["film_base"]
 

@@ -28,30 +28,5 @@ class Strict135FilmEngine:
         cinema_keywords = ["5207", "5294", "5219", "5203", "vision3", "ektachrome", "motion", "cinema"]
         return "BH" if any(k in shooting_info.lower() for k in cinema_keywords) else "KS"
 
-    def draw_single_perf(self, draw, cx, cy, perf_fill, perf_type="KS"):
-        h = self.mm_to_px(self.PERF_DIM_Y_MM)
-        if perf_type == "KS":
-            w = self.mm_to_px(self.PERF_DIM_X_KS_MM)
-            r = self.mm_to_px(self.PERF_RADIUS_MM)
-            draw.rounded_rectangle(
-                [cx - w//2, cy - h//2, cx + w//2, cy + h//2],
-                radius=r, fill=perf_fill, outline=None
-            )
-        else:
-            w = self.mm_to_px(self.PERF_DIM_X_BH_MM)
-            cd = self.mm_to_px(self.BH_CURVE_DEPTH_MM)
-            draw.rectangle(
-                [cx - w//2, cy - h//2 + cd, cx + w//2, cy + h//2 - cd],
-                fill=perf_fill, outline=None
-            )
-            draw.ellipse(
-                [cx - w//2, cy - h//2, cx + w//2, cy - h//2 + 2*cd],
-                fill=perf_fill, outline=None
-            )
-            draw.ellipse(
-                [cx - w//2, cy + h//2 - 2*cd, cx + w//2, cy + h//2],
-                fill=perf_fill, outline=None
-            )
-
     def get_perf_pitch(self, perf_type):
         return self.PITCH_KS_MM if perf_type == "KS" else self.PITCH_BH_MM

@@ -30,15 +30,6 @@ def thumb_path(roll_id: str, style: str = "main") -> str:
     return os.path.join(thumbs_dir(), f"{safe}_{style}.jpg")
 
 
-def _fit_box(img_w: int, img_h: int, box: tuple[int, int]) -> tuple[int, int]:
-    """等比缩到 box 内，不放大原图（放大小图只会浪费空间和显存）。"""
-    bw, bh = box
-    if img_w <= 0 or img_h <= 0:
-        return bw, bh
-    scale = min(bw / img_w, bh / img_h, 1.0)
-    return max(1, int(img_w * scale)), max(1, int(img_h * scale))
-
-
 def make_thumb(src_path: str, dst_path: str,
                box: tuple[int, int] = THUMB_BOX) -> str | None:
     """生成缩略图并缓存。成功返回 dst_path，失败返回 None（不抛异常）。

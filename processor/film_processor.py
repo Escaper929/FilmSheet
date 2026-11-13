@@ -3,23 +3,16 @@
 import logging
 
 import os
-import math
-import random
-import time
-import threading
-import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image
 
 from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
-    open_folder, load_config, save_config,
-    STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS,
-    FILM_FORMAT_RATIOS, SUPPORTED_FORMATS, is_image_file
+    STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, is_image_file
 )
 from .renderers_135 import Renderer135
 from .renderers_120 import Renderer120
-from .config_schema import validate_config, sanitize_config, COMPUTED_FIELDS
+from .config_schema import validate_config, sanitize_config
 from .filename_utils import generate_output_filename
 from .edge_text import generate_edge_text as _generate_edge_text_pure
 from .image_pipeline import (
@@ -208,11 +201,6 @@ class FilmProcessor:
         """所有成功路径的统一出口：先归档，再返回 success。"""
         self._notify_done(config, frame_count, output_specs or [])
         return "success"
-
-    def crop_to_135_ratio(self, img):
-        """Delegate to image_pipeline for future portability."""
-        from .image_pipeline import _crop_to_135_ratio as _crop
-        return _crop(img)
 
     def cover_resize_crop(self, img, target_w, target_h):
         """Delegate to image_pipeline for future portability."""
