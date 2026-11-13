@@ -246,6 +246,64 @@ class TestImagePipeline(unittest.TestCase):
         result = process_135_image(source, 180, "positive", True)
         self.assertEqual(result.size, (180, 120))
 
+    def test_undecodable_135_file_returns_none(self):
+        """回归：坏文件/隐藏文件曾抛 NameError 而不是返回 None。
+
+        except 元组里引用了未导入的 UnidentifiedImageError，Python 在求值
+        except 子句时先抛 NameError，整个批量渲染就崩在这里。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "._DSC0001.JPG")   # AppleDouble 同名残留
+            with open(path, "wb") as f:
+                f.write(b"\x00\x05\x16\x07not-an-image")
+            self.assertIsNone(process_135_image(path, 180, "positive", True))
+
+    def test_undecodable_120_file_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "broken.jpg")
+            with open(path, "wb") as f:
+                f.write(b"PK\x03\x04 definitely not a jpeg")
+            self.assertIsNone(process_120_image(path, "66", 180, "positive", True))
+
+
+class TestImageFileFilter(unittest.TestCase):
+    """文件夹里的隐藏文件不该进入渲染队列。"""
+
+    def test_accepts_regular_images(self):
+        from utils.helpers import is_image_file
+        for name in ("DSC0001.JPG", "dsc0002.jpeg", "scan.tiff", "x.png", "y.BMP"):
+            self.assertTrue(is_image_file(name), name)
+
+    def test_rejects_apple_double_sidecars(self):
+        """macOS 在 NAS/SMB/exFAT 上会写 ._ 开头的资源叉副本，后缀仍是 .JPG。"""
+        from utils.helpers import is_image_file
+        self.assertFalse(is_image_file("._DSC0001.JPG"))
+        self.assertFalse(is_image_file("._DSC0002.jpg"))
+        self.assertFalse(is_image_file(".hidden.jpg"))
+
+    def test_rejects_system_junk_and_other_types(self):
+        from utils.helpers import is_image_file
+        for name in (".DS_Store", "Thumbs.db", "desktop.ini", "notes.txt", ""):
+            self.assertFalse(is_image_file(name), name)
+
+    def test_resolve_image_list_skips_hidden_files(self):
+        """预览与出图共用这条路径：隐藏文件混进来会让「张数」对不上。"""
+        from processor.film_processor import FilmProcessor
+        from PIL import Image as _Image
+
+        with tempfile.TemporaryDirectory() as tmp:
+            _Image.new("RGB", (360, 240)).save(os.path.join(tmp, "A.JPG"))
+            _Image.new("RGB", (360, 240)).save(os.path.join(tmp, "B.jpg"))
+            with open(os.path.join(tmp, "._A.JPG"), "wb") as f:
+                f.write(b"\x00\x05\x16\x07junk")
+            with open(os.path.join(tmp, ".DS_Store"), "wb") as f:
+                f.write(b"\x00\x00\x00\x01")
+
+            proc = FilmProcessor({"input_folder": tmp, "film_format": "135"})
+            files, err = proc._resolve_image_list()
+            self.assertIsNone(err)
+            self.assertEqual([os.path.basename(p) for p in files], ["A.JPG", "B.jpg"])
+
 
 # ====================================================================
 # Parallel processing order tests

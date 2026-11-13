@@ -850,6 +850,7 @@ class ArchivePage:
                     "eye")
         elif roll.outputs:
             # 登记过产物但文件不在了：说明白，不要给一个必然失败的按钮
+            c = self.app.colors
             tk.Label(self.detail_actions, text="产物文件已不在原位置",
                      bg=c["surface"], fg=c["warning"],
                      font=self.app.fonts["caption"]).pack(fill=tk.X, pady=2)

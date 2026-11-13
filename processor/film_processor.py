@@ -15,7 +15,7 @@ from engine.film_engine import Strict135FilmEngine
 from utils.helpers import (
     open_folder, load_config, save_config,
     STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS,
-    FILM_FORMAT_RATIOS, SUPPORTED_FORMATS
+    FILM_FORMAT_RATIOS, SUPPORTED_FORMATS, is_image_file
 )
 from .renderers_135 import Renderer135
 from .renderers_120 import Renderer120
@@ -264,7 +264,7 @@ class FilmProcessor:
         files = sorted([
             os.path.join(folder, f)
             for f in os.listdir(folder)
-            if f.lower().endswith(SUPPORTED_FORMATS)
+            if is_image_file(f)
         ])
         if not files:
             return [], "文件夹中没有图片。"

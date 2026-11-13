@@ -35,6 +35,25 @@ FILM_FORMAT_RATIOS = {
 }
 SUPPORTED_FORMATS = ('.jpg', '.jpeg', '.png', '.tiff', '.bmp')
 
+
+def is_image_file(name: str) -> bool:
+    """Return True only for a real image file name.
+
+    Hidden / sidecar junk has to be excluded, not just non-image extensions.
+    macOS writes AppleDouble sidecars (``._DSC0001.JPG``) next to every file
+    when the volume is not HFS+/APFS — NAS shares, SMB, exFAT, USB sticks.
+    The extension still looks like an image, so an extension-only filter lets
+    them through, and PIL then fails to decode the resource-fork bytes for the
+    whole batch.
+
+    Names starting with ``.`` are never user photos, so skipping the prefix
+    covers ``._*``, ``.DS_Store``, ``.thumbnails`` and friends in one rule.
+    """
+    base = os.path.basename(name)
+    if not base or base.startswith('.'):
+        return False
+    return base.lower().endswith(SUPPORTED_FORMATS)
+
 LABEL_MAP = {
     'roll':       ('卷号', 'Roll No.'),
     'camera':     ('相机', 'Cam'),

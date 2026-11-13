@@ -3,7 +3,7 @@
 
 import math
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from utils.helpers import STYLE_COLORS, LABEL_MAP, INFO_LAYOUT, NO_COLON_FIELDS, open_folder, get_system_font
 

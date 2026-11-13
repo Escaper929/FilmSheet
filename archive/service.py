@@ -155,11 +155,11 @@ class ArchiveService:
             self.last_error = f"目录不存在：{folder}"
             return []
 
-        from utils.helpers import SUPPORTED_FORMATS
+        from utils.helpers import is_image_file
 
         groups: dict[str, dict] = {}
         for name in sorted(os.listdir(folder)):
-            if not name.lower().endswith(SUPPORTED_FORMATS):
+            if not is_image_file(name):
                 continue
             path = os.path.join(folder, name)
             stem = os.path.splitext(name)[0]

@@ -5,7 +5,7 @@ Pure functions for processing individual image files into thumbnails.
 Independent of rendering, config, or UI — suitable for Web/mobile API.
 """
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 from typing import BinaryIO, Optional, Union
 
 

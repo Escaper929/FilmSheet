@@ -6,7 +6,7 @@
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Web-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
-![Version](https://img.shields.io/badge/version-v1.34-blue)
+![Version](https://img.shields.io/badge/version-v1.35-blue)
 
 三个前端共用同一套渲染引擎：**桌面端**（Tkinter）、**移动网页版**（PWA，可安装到手机桌面）、**REST API**（FastAPI，可自建 / 部署到 NAS）。
 
