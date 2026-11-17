@@ -107,10 +107,18 @@ STYLE_COLORS = {
 # ⚠️ 三个坑叠在这一个函数里，每个单独看都不显眼：
 #
 # ① **路径会失效**。macOS 14 起不再提供 /System/Library/Fonts/PingFang.ttc，
-#    PingFang 改由 MobileAsset 下发到
-#    /System/Library/AssetsV2/com_apple_MobileAsset_Font8/<内容哈希>/AssetData/，
-#    哈希随字体更新而变化 → 只能 glob。写死旧路径的后果是**静默跳到下一候选**：
-#    成片上的字体、字重全变了，而没有任何提示。
+#    PingFang 改由 MobileAsset 下发。注意目录形态是 `<内容哈希>.asset/AssetData/`
+#    ——**带 `.asset` 后缀**，早期这份代码漏写后缀，glob 永远匹配不到东西，
+#    于是 PingFang 候选形同虚设、静默掉到 Hiragino（正是下面警告的那种故障）。
+#
+#    但本机实测（macOS 27.0）：这个目录里放的是汉仪/华文等第三方字体，
+#    **并不包含 PingFang**；全机唯一的 PingFang 是
+#    /System/Library/PrivateFrameworks/FontServices.framework/.../Reserved/PingFangUI.ttc，
+#    而它的 32 个字面全部只有苹果私有的 `hvgl` 轮廓表，没有 glyf / CFF ——
+#    FreeType（Pillow 的后端）加载直接报 "unknown file format"。
+#    也就是说 **在 macOS 27 上成片用不了 PingFang**，这不是配置能绕过的，
+#    所以这里保留 glob 只作「万一某版本还能拿到」的机会，并在
+#    font_diagnostics() 里把真实原因报出来，避免又是静默降级。
 #
 # ② **.ttc 是一个文件装多个字面**，而 PIL 的 truetype() 默认取 index 0 —— 恰恰
 #    往往不是要的那个。本机实测（`ImageFont.truetype(f, 12, index=i).getname()`）：
@@ -127,7 +135,7 @@ STYLE_COLORS = {
 # （family 恒为 Microsoft YaHei），保持「取 index 0」的老行为最稳 —— 本机无法
 # 验证 Windows 字体表，一旦家族名对不上就会静默掉到 SimHei，那才是真退化。
 _PINGFANG_GLOB = ("/System/Library/AssetsV2/com_apple_MobileAsset_Font8/"
-                  "*/AssetData/PingFang.ttc")
+                  "*.asset/AssetData/PingFang.ttc")
 
 # 扫 .ttc 时最多试多少个字面（实际最多 12 个，扫不动会提前 break）
 _MAX_FACES = 24
@@ -226,6 +234,41 @@ def _resolve_font():
                 _font_choice = hit
                 break
     return _font_choice
+
+def font_diagnostics():
+    """解释成片字体为什么是这一个 —— 返回可读的诊断行列表。
+
+    降级本身是设计好的（候选链），问题在于它**完全静默**：成片字体变了、
+    字重也变了，界面上却没有任何提示。这个函数把每一步的判定理由摊开，
+    让「为什么没用 PingFang」能一条命令问出来，而不是去读源码猜。
+    """
+    from PIL import ImageFont
+    lines = []
+    chosen = _resolve_font()
+    for spec, family, style in _font_candidates():
+        paths = _expand(spec)
+        if not paths:
+            lines.append(f"[跳过] {spec} —— 文件不存在")
+            continue
+        for path in paths:
+            idx = _scan_face(path, family, style)
+            if idx is None:
+                lines.append(f"[跳过] {path} —— 找不到家族 {family!r}")
+                continue
+            note = ""
+            if (path, idx) == chosen:
+                note = "  ← 实际使用"
+            lines.append(f"[可用] {path} (index={idx}) 家族={family!r}{note}")
+            break
+    if chosen[0]:
+        try:
+            name = ImageFont.truetype(chosen[0], 12, index=chosen[1]).getname()
+            lines.append(f"最终: {chosen[0]} index={chosen[1]} → {name}")
+        except Exception as exc:
+            lines.append(f"最终: {chosen[0]} index={chosen[1]}（读取失败: {exc}）")
+    else:
+        lines.append("最终: 未找到可用中文字体，回退 Pillow 默认字体")
+    return lines
 
 
 def get_system_font(size):

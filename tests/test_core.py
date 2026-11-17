@@ -721,6 +721,27 @@ class TestOutputFont(unittest.TestCase):
         i_st = next(i for i, s in enumerate(specs) if "STHeiti" in s)
         self.assertLess(i_pf, i_st)
 
+    @unittest.skipUnless(sys.platform == "darwin", "MobileAsset 布局是 macOS 专有")
+    def test_mobileasset_glob_matches_dot_asset_layout(self):
+        """MobileAsset 的目录形态是 `<哈希>.asset/AssetData/`，**带 `.asset` 后缀**。
+
+        glob 漏掉后缀时它永远匹配不到东西，PingFang 候选就此形同虚设，
+        而且降级是全静默的 —— 成片字体变了却没有任何提示。
+        """
+        self.assertIn("*.asset/AssetData/", self.H._PINGFANG_GLOB)
+
+    def test_font_diagnostics_explains_the_choice(self):
+        """诊断输出必须点明最终选中的文件，否则降级依旧不可解释。"""
+        lines = self.H.font_diagnostics()
+        self.assertTrue(lines, "诊断不该返回空列表")
+        self.assertTrue(
+            any(line.startswith("最终:") for line in lines),
+            lines,
+        )
+        if self.path:
+            # 选中路径必须出现在诊断里，方便对照「为什么是它」。
+            self.assertTrue(any(self.path in line for line in lines), lines)
+
     # ---- 字形级证据 ----
 
     @unittest.skipUnless(sys.platform == "darwin", "只在 macOS 上验简繁字形")

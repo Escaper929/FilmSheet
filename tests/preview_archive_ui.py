@@ -693,6 +693,12 @@ print("已渲染:", out, img.size,
 # 把真正用上的字体打出来：回落到无中文字体时预览会满屏豆腐块，但图还是「生成
 # 成功」的，不打印就只能靠肉眼发现。
 print(f"  Tk 家族={app.font} | PIL 字面={_face} | {getattr(_probe_font, 'path', '?')}")
+# Tk 和 PIL 走的是两套字体后端（CoreText vs FreeType），同一台机器上完全可能
+# 选到不同字体 —— 界面是 PingFang、成片却是 Hiragino 就是这样来的。把候选链的
+# 判定理由一并打出来，否则「为什么成片不是 PingFang」只能去读源码猜。
+from utils import helpers as _H
+for _line in _H.font_diagnostics():
+    print("   ", _line)
 for w in warn:
     print("⚠️", w)
 root.destroy()
