@@ -29,7 +29,17 @@ jobs:
           pip install -r requirements.txt -r api/requirements.txt
 
       - name: Run core tests
-        run: python -m unittest tests.test_core tests.test_api -v
+        # 纳入全部不依赖 GUI 的测试。此前只跑 test_core + test_api，
+        # test_archive / test_config / test_ui_aa 在 CI 里从未被执行过 ——
+        # 银盐册的原子写入、损坏恢复、缩略图缓存这些恰恰最容易无声坏掉。
+        # test_ui_aa 中唯一需要 Tk 的用例会在无显示环境下自行 skip。
+        run: |
+          python -m unittest \
+            tests.test_core \
+            tests.test_api \
+            tests.test_archive \
+            tests.test_config \
+            tests.test_ui_aa -v
 
       - name: 校验版本号与 tag 一致
         # 打 tag 时，仓库内的 filmsheet/_version.py 必须与 tag 版本同步，
