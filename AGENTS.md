@@ -187,9 +187,19 @@ python -m unittest tests.test_ui_aa -v     # Antialiasing quality + performance
 python tests/selftest_archive_ui.py        # Archive UI headless self-test
 python tests/preview_archive_ui.py         # Render the archive page to a PNG
 ```
-Tests need Pillow. On macOS the WorkBuddy-managed Python lacks it — use
-`/Library/Frameworks/Python.framework/Versions/3.14/bin/python3`.
-`tests.test_api` additionally needs `httpx2`.
+Tests need Pillow. Use the python.org Python at
+`/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` (Tk 8.6.16).
+
+**Do not run the GUI tests on the macOS system Python (`/usr/bin/python3`).**
+Its Tk is 8.5.9, from 2010, and lays out CJK text so slowly that
+`tests/selftest_archive_ui.py` appears hung — it produces no output for
+minutes and looks like a deadlock. It is not: `sample <pid>` shows it inside
+`Tk_DrawTextLayout`. On Tk 8.6 the same script finishes in ~2s. Swapping in a
+newer Tk.framework does not help either — the system `_tkinter.so` is linked
+against `/System/.../Tk.framework/Versions/8.5` and its load command demands
+compatibility 8.5.0.
+
+`tests.test_api` additionally needs `httpx`.
 
 ### Desktop App
 ```bash

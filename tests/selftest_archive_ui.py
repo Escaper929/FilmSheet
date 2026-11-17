@@ -165,12 +165,12 @@ def main():
     tmp = tempfile.mkdtemp(prefix="filmsheet-ui-selftest-")
     try:
         svc = build_fixture(tmp)
-        print(f"\n=== 银盐册界面自测 ===")
+        print("\n=== 银盐册界面自测 ===")
 
         # ---------- 基本渲染 ----------
         root, app = make_app(svc, "1200x780+0+0")
         ap = app.archive_page
-        check(len(ap._cards) == 7, f"网格渲染 7 张卡片", f"实得 {len(ap._cards)}")
+        check(len(ap._cards) == 7, "网格渲染 7 张卡片", f"实得 {len(ap._cards)}")
         check(not overlaps(cards_boxes(app)), "卡片无重叠")
 
         # ---- 页面必须真正被布局（回归：曾因多套一层 frame 导致整页空白）----
@@ -297,7 +297,7 @@ def main():
         ap.vars["keyword"].set("m6")
         ap.refresh(); pump(root, 3)
         n_m6 = len(ap._cards)
-        check(n_m6 == 3, f"搜索 'm6' 命中 3 卷（Leica M6）", f"实得 {n_m6}")
+        check(n_m6 == 3, "搜索 'm6' 命中 3 卷（Leica M6）", f"实得 {n_m6}")
 
         ap.vars["keyword"].set("不存在的卷")
         ap.refresh(); pump(root, 3)
@@ -364,7 +364,6 @@ def main():
         # （面板已固定 286，但窗口宽仍可变），写死数字会随样式调整而失效。
         # 真正的不变量是「不越界、不重叠」。
         print("\n=== 响应式布局 ===")
-        from ui.archive_page import CARD_W
         for w, h in ((900, 510), (1200, 780), (1600, 900)):
             root, app = make_app(svc, f"{w}x{h}+0+0")
             ap = app.archive_page
@@ -380,7 +379,6 @@ def main():
                   f"右边缘 {maxr} > 网格 {grid_w}")
             check(not overlaps(boxes), f"{w}px 窗口卡片无重叠")
             # 每一行实际用到的列数不应超过设定值
-            used = {b[0] for b in boxes}
             check(len(boxes) <= cols * max(1, (len(boxes) + cols - 1) // cols),
                   f"{w}px 窗口列数自洽", f"cols={cols} cards={len(boxes)}")
             # 卡片文字区必须装得下所有标签 —— 直接比「需要高度」与「实际高度」，

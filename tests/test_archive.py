@@ -19,7 +19,7 @@ from archive.models import Roll, Output, STATUS_ARCHIVED, STATUS_DRAFT
 from archive import store as S
 from archive.store import ArchiveStore, migrate, SCHEMA_VERSION
 from archive.service import (ArchiveService, parse_stem, _looks_like_date,
-                             _strip_style_suffix, _group_key)
+                             _group_key)
 
 
 class TempStoreCase(unittest.TestCase):

@@ -6,7 +6,6 @@ GUI, network, or actual image files.
 """
 
 import io
-import math
 import os
 import pathlib
 import sys
@@ -17,9 +16,9 @@ from unittest import mock
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
-from processor.edge_text import generate_edge_text, BRAND_MAP, TYPE_MAP, CINEMA_KEYWORDS
+from processor.edge_text import generate_edge_text
 from processor.filename_utils import generate_output_filename
 from processor.image_pipeline import (
     process_135_image,
