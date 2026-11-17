@@ -949,8 +949,20 @@ async function render() {
     const resp = await fetch(getApiUrl() + '/render', { method: 'POST', body: formData });
 
     if (!resp.ok) {
-      const txt = await resp.text();
-      throw new Error(txt);
+      // The API answers with a JSON body ({"detail": ...}). Older/other
+      // proxies may still hand back text, and `detail` itself is sometimes a
+      // plain string — fall back through all of them so the user never sees
+      // raw JSON in the toast.
+      const raw = await resp.text();
+      let msg = raw;
+      try {
+        const body = JSON.parse(raw);
+        const d = body && body.detail;
+        if (typeof d === 'string') msg = d;
+        else if (d && Array.isArray(d.errors)) msg = d.message + '\n' + d.errors.join('\n');
+        else if (d && d.message) msg = d.message;
+      } catch (_) { /* not JSON — keep the raw text */ }
+      throw new Error(msg);
     }
 
     document.getElementById('progressFill').style.width = '80%';

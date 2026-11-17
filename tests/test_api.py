@@ -107,6 +107,29 @@ class TestRenderAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("sub_format", response.text)
 
+    def test_validation_error_is_json_like_other_errors(self):
+        """A config rejection must be machine-readable JSON, not plain text.
+
+        It previously returned `text/plain`, so a client had to branch on
+        content-type just to read a config error, and `r.json()` raised.
+        """
+        response = self.client.post(
+            "/render",
+            files=self._image_files(),
+            data={"film_format": "135", "sub_format": "645", "thumb_width": "300"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("application/json", response.headers["content-type"])
+        detail = response.json()["detail"]
+        self.assertIsInstance(detail["message"], str)
+        self.assertIsInstance(detail["errors"], list)
+        # The specific cause stays available for debugging.
+        self.assertTrue(
+            any("sub_format" in e for e in detail["errors"]),
+            detail["errors"],
+        )
+
     def test_rejects_unknown_film_format(self):
         response = self.client.post(
             "/render",

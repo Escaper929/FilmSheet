@@ -239,7 +239,23 @@ async def render_film_sheet(
 
     is_valid, errors = validate_config(config)
     if not is_valid:
-        return Response(content=f"配置错误: {'; '.join(errors)}", media_type="text/plain", status_code=400)
+        # Return JSON, like every other error in this endpoint. A plain-text
+        # body made clients unable to `r.json()` the failure — they had to
+        # branch on content-type just to read a config error.
+        #
+        # The validator's messages quote internal field names (`'sub_format'
+        # invalid value ...`), which is the config key, not the multipart form
+        # field the caller sent. Keep that detail in `errors` for debugging and
+        # give the caller a stable top-level message. Field names are identical
+        # in both callers (desktop + API), so they're not renamed, just set
+        # apart from the headline.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "配置错误: 请求参数未通过校验",
+                "errors": errors,
+            },
+        )
 
     # Normalize uploads into a request-scoped temporary directory. It is removed
     # even if preprocessing or rendering raises an exception.
