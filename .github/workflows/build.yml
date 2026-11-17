@@ -86,6 +86,12 @@ jobs:
           pyinstaller main.spec --clean
           xattr -cr dist/FilmSheet.app
           test -d dist/FilmSheet.app/Contents/Frameworks
+          # `macos-latest` 的架构由 GitHub 决定，将来可能变化；产物架构漂移
+          # 不会有任何报错，只会在用户机器上变成「打不开」。这里断言而不是
+          # 只打印 —— 只打印的写法失败了也返回 0。
+          ARCH=$(lipo -archs dist/FilmSheet.app/Contents/MacOS/FilmSheet)
+          echo "产物架构: $ARCH"
+          [[ "$ARCH" == *arm64* ]] || { echo "::error::期望 arm64，实际 $ARCH"; exit 1; }
 
       - name: 压缩 macOS 产物
         run: |
@@ -141,7 +147,10 @@ jobs:
           pyinstaller main.spec --clean
           xattr -cr dist/FilmSheet.app
           test -d dist/FilmSheet.app/Contents/Frameworks
-          file dist/FilmSheet.app/Contents/MacOS/FilmSheet
+          # 同 arm64 侧：断言而非打印。这里用 -archs 而非 `file`，输出更稳定。
+          ARCH=$(lipo -archs dist/FilmSheet.app/Contents/MacOS/FilmSheet)
+          echo "产物架构: $ARCH"
+          [[ "$ARCH" == *x86_64* ]] || { echo "::error::期望 x86_64，实际 $ARCH"; exit 1; }
 
       - name: 压缩 macOS 产物
         run: |
